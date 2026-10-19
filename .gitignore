@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+
+# build output
+web/dist/
+contracts/artifacts/
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+
+# secrets & local env (never commit)
+.env
+.env.*
+!.env.example
+server/.env
+web/.env.local
+web/.env.development.local
+web/.env.production.local
+
+# logs
+*.log
+logs/
+
+# OS / editor / folder-icon plumbing
+.DS_Store
+Thumbs.db
+desktop.ini
+.icons/
+.vscode/
+.idea/
+
+# local tool scratch
+tmp/
+*.tmp

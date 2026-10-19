@@ -1,0 +1,28 @@
+{
+  "name": "agentdesk",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "AI agent commerce control plane on Base — spend policies, x402, Base Verify",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "cd server && npm run dev",
+    "dev:web": "cd web && npm run dev",
+    "build": "cd web && npm run build",
+    "build:chain": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/chain/build-chain.ps1",
+    "deploy:sepolia": "cd contracts && npm run deploy:sepolia",
+    "compile": "cd contracts && npx hardhat compile && node scripts/export-abis.js",
+    "e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/e2e/run-e2e.ps1",
+    "e2e:api": "node tools/e2e/api-e2e.mjs",
+    "e2e:ui": "node tools/e2e/ui-e2e.mjs",
+    "e2e:clean": "node tools/e2e/cleanup.mjs",
+    "chain:status": "node tools/chain/chain-status.mjs",
+    "chain:smoke": "node tools/chain/chain-smoke.mjs",
+    "faucet": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/faucet/mine-and-claim.ps1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "puppeteer-core": "^25.14.0",
+    "viem": "^2.57.7"
+  }
+}
