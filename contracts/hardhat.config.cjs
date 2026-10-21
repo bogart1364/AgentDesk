@@ -1,10 +1,10 @@
-require('@nomicfoundation/hardhat-toolbox');
+﻿require('@nomicfoundation/hardhat-toolbox');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: '0.8.24',
+    version: '0.8.28',
     settings: {
       optimizer: { enabled: true, runs: 200 },
     },
@@ -51,3 +51,4 @@ module.exports = {
     ],
   },
 };
+

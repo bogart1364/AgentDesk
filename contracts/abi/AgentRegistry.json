@@ -5,6 +5,11 @@
         "internalType": "uint256",
         "name": "_maxAgentsPerIdentity",
         "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "verifyRegistry",
+        "type": "address"
       }
     ],
     "stateMutability": "nonpayable",
@@ -24,6 +29,11 @@
       }
     ],
     "name": "AgentNotFound",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EmptyIdentity",
     "type": "error"
   },
   {
@@ -143,6 +153,19 @@
     "type": "event"
   },
   {
+    "inputs": [],
+    "name": "REGISTRY",
+    "outputs": [
+      {
+        "internalType": "contract ISignerRegistry",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -249,11 +272,51 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "conditions",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "op",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "value",
+            "type": "string"
+          }
+        ],
+        "internalType": "struct BaseVerifyConsumer.Condition[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "bytes32",
         "name": "identityHash",
         "type": "bytes32"
+      },
+      {
+        "internalType": "uint40",
+        "name": "expiration",
+        "type": "uint40"
+      },
+      {
+        "internalType": "bytes",
+        "name": "signature",
+        "type": "bytes"
       },
       {
         "internalType": "string",
@@ -275,6 +338,19 @@
       }
     ],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "cutoffBlock",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -402,6 +478,19 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "provider",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "pure",
     "type": "function"
   },
   {

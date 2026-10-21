@@ -55,9 +55,11 @@ export const contracts = {
     : null,
 };
 
-// ── chunked getLogs (public Sepolia RPC caps eth_getLogs at 200 blocks) ──
+// ── chunked getLogs (public Sepolia RPC caps eth_getLogs at 200 blocks/query) ──
 const LOG_CHUNK = 200n;
-const MAX_CHUNKS = 40; // 40 x 200 = 8,000 blocks per query, bounded latency
+// Total windows per query. 600 x 200 = 120k blocks (~2.5 days on Base Sepolia).
+// Override with LOG_MAX_WINDOWS when your history is longer than that.
+const LOG_MAX_WINDOWS = Number(process.env.LOG_MAX_WINDOWS || 600);
 const LOG_CONCURRENCY = 8;
 
 async function mapLimit(items, limit, fn) {
@@ -74,25 +76,35 @@ async function mapLimit(items, limit, fn) {
 }
 
 /**
- * getLogs split into <=200-block ranges, capped at MAX_CHUNKS windows
- * (reads the most recent window). Returns flattened, time-ordered logs.
+ * getLogs split into <=200-block ranges (the RPC rejects wider ranges).
+ * Scans [fromBlock, toBlock] oldest-first; if the span exceeds LOG_MAX_WINDOWS
+ * windows the oldest part is dropped (with a warning) so latency stays bounded.
+ * Returns flattened, block-ordered logs.
  */
 async function getLogsChunked({ address, event, args, fromBlock, toBlock }) {
   let start = fromBlock;
   const span = toBlock - fromBlock + 1n;
   const needed = Number((span + LOG_CHUNK - 1n) / LOG_CHUNK);
-  if (needed > MAX_CHUNKS) {
-    start = toBlock - LOG_CHUNK * BigInt(MAX_CHUNKS) + 1n;
+  if (needed > LOG_MAX_WINDOWS) {
+    start = toBlock - LOG_CHUNK * BigInt(LOG_MAX_WINDOWS) + 1n;
     if (start < fromBlock) start = fromBlock;
+    console.warn(
+      `[chain] ${needed} windows needed from block ${fromBlock} but LOG_MAX_WINDOWS=${LOG_MAX_WINDOWS}; scanning from ${start}. Raise LOG_MAX_WINDOWS for full history.`
+    );
   }
   const windows = [];
   for (let s = start; s <= toBlock; s += LOG_CHUNK) {
     const e = s + LOG_CHUNK - 1n > toBlock ? toBlock : s + LOG_CHUNK - 1n;
     windows.push({ fromBlock: s, toBlock: e });
   }
-  const parts = await mapLimit(windows, LOG_CONCURRENCY, (w) =>
-    publicClient.getLogs({ address, event, args, ...w })
-  );
+  const parts = await mapLimit(windows, LOG_CONCURRENCY, async (w) => {
+    try {
+      return await publicClient.getLogs({ address, event, args, ...w });
+    } catch (e) {
+      console.warn(`[chain] getLogs ${w.fromBlock}-${w.toBlock} failed: ${e?.shortMessage || e?.message}`);
+      return [];
+    }
+  });
   return parts.flat();
 }
 
@@ -111,12 +123,6 @@ function cached(key, fn) {
 }
 
 // ── event fragments ──
-const agentCreatedEvent = parseAbiItem(
-  'event AgentCreated(uint256 indexed agentId, address indexed owner, bytes32 indexed identityHash, string name)'
-);
-const agentUpdatedEvent = parseAbiItem(
-  'event AgentUpdated(uint256 indexed agentId, string name, string metadataURI)'
-);
 const spendRecordedEvent = parseAbiItem(
   'event SpendRecorded(uint256 indexed agentId, address indexed merchant, uint256 amount, uint256 txHashHint)'
 );
@@ -218,45 +224,44 @@ export async function getAgentOnChain(agentId) {
 }
 
 /**
- * List agents for an owner by scanning AgentCreated events (from deploy block).
- * DEPLOY_BLOCK env recommended for fast startup.
+ * List agents for an owner. Reads nextAgentId() then getAgent(i) directly —
+ * no log scanning, so it works regardless of how far back the deploy was.
  */
 export async function listAgentsByOwner(owner) {
   if (!contracts.registry) return [];
-  return cached(`agents:${owner.toLowerCase()}`, async () => {
-    const fromBlock = process.env.DEPLOY_BLOCK ? BigInt(process.env.DEPLOY_BLOCK) : 0n;
-    const latest = await publicClient.getBlockNumber();
-
-    const logs = await getLogsChunked({
-      address: cfg.registryAddress,
-      event: agentCreatedEvent,
-      args: { owner },
-      fromBlock,
-      toBlock: latest,
-    });
-
-    const agents = [];
-    for (const log of logs) {
-      const a = await getAgentOnChain(Number(log.args.agentId));
-      if (a) {
-        a.createdAtBlock = Number(log.blockNumber);
-        agents.push(a);
-      }
+  const want = owner.toLowerCase();
+  return cached(`agents:${want}`, async () => {
+    let next = 1n;
+    try {
+      next = await publicClient.readContract({ ...contracts.registry, functionName: 'nextAgentId' });
+    } catch {
+      next = 1n;
     }
-    return agents.sort((x, y) => y.id - x.id);
+    const ids = [];
+    for (let i = 1n; i < next; i++) ids.push(i);
+    if (!ids.length) return [];
+
+    const found = await mapLimit(ids, 8, async (id) => {
+      const a = await getAgentOnChain(Number(id));
+      return a && String(a.owner_address || '').toLowerCase() === want ? a : null;
+    });
+    return found.filter(Boolean).sort((x, y) => y.id - x.id);
   });
 }
 
-/** Recent SpendRecorded events for the live feed. */
+/** Recent SpendRecorded events for the live feed.
+ * FEED_LOOKBACK_BLOCKS: window size (default 0 = from DEPLOY_BLOCK, full history). */
 export async function getRecentSpend(limit = 50) {
   if (!contracts.policy) return [];
   return cached(`spend:${limit}`, async () => {
-    const fromBlock = process.env.DEPLOY_BLOCK ? BigInt(process.env.DEPLOY_BLOCK) : 0n;
+    const deployBlock = process.env.DEPLOY_BLOCK ? BigInt(process.env.DEPLOY_BLOCK) : 0n;
     const latest = await publicClient.getBlockNumber();
-
-    // scan last ~4,000 blocks (bounded: 20 windows x 200) unless DEPLOY_BLOCK is newer
-    const safeFrom = latest > 4_000n ? latest - 4_000n : 0n;
-    const start = fromBlock > safeFrom ? fromBlock : safeFrom;
+    const lookback = BigInt(Number(process.env.FEED_LOOKBACK_BLOCKS || 0));
+    let start = deployBlock;
+    if (lookback > 0n) {
+      const windowStart = latest > lookback ? latest - lookback : 0n;
+      start = windowStart > deployBlock ? windowStart : deployBlock;
+    }
 
     const logs = await getLogsChunked({
       address: cfg.policyAddress,

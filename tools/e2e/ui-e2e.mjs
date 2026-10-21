@@ -1,3 +1,6 @@
+﻿import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 import { privateKeyToAccount } from 'viem/accounts';
 
@@ -5,6 +8,9 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const account = privateKeyToAccount('0x' + '11'.repeat(32));
 const ADDR = account.address;
 const log = (...a) => console.log('[ui]', ...a);
+const SHOTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'tmp', 'e2e');
+fs.mkdirSync(SHOTS, { recursive: true });
+const shot = (name) => path.join(SHOTS, name);
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-sandbox'] });
 const page = await browser.newPage();
@@ -45,13 +51,13 @@ const clickByText = (pat) =>
     return null;
   }, typeof pat === 'string' ? pat : pat.source);
 
-// ── 1. landing: no login box in hero; header button opens modal ──
+// â”€â”€ 1. landing: no login box in hero; header button opens modal â”€â”€
 await page.goto('http://localhost:8787', { waitUntil: 'networkidle2', timeout: 30000 });
 await new Promise((r) => setTimeout(r, 700));
 let t = await txt();
 const hasWalletAccessInPage = t.includes('WALLET ACCESS');
 log('hero has login box (must be false):', hasWalletAccessInPage);
-await page.screenshot({ path: 'shot-landing.png' });
+await page.screenshot({ path: shot('landing.png') });
 
 const headerBtn = await clickByText('Connect & Login');
 log('header button clicked:', headerBtn);
@@ -62,8 +68,8 @@ log('modal opened:', modalOpen);
 const coinbasePresent = await page.evaluate(() =>
   [...document.querySelectorAll('button')].some((x) => /Continue with Coinbase Wallet/i.test(x.innerText))
 );
-log('coinbase button present (not clicked — needs real extension):', coinbasePresent);
-await page.screenshot({ path: 'shot-modal.png' });
+log('coinbase button present (not clicked â€” needs real extension):', coinbasePresent);
+await page.screenshot({ path: shot('modal.png') });
 
 if (!modalOpen) {
   log('FAIL: modal did not open');
@@ -71,7 +77,7 @@ if (!modalOpen) {
   process.exit(1);
 }
 
-// ── 2. login via injected fallback (Browser Wallet) ──
+// â”€â”€ 2. login via injected fallback (Browser Wallet) â”€â”€
 const browserBtn = await clickByText('Browser Wallet');
 log('clicked Browser Wallet:', browserBtn);
 await new Promise((r) => setTimeout(r, 4000));
@@ -88,9 +94,9 @@ const inConsole = t.includes('Sign Out') && t.includes('Dashboard');
 log('in console:', inConsole);
 const modeLine = t.split('\n').find((l) => /MODE/.test(l));
 log('mode banner:', modeLine?.trim().slice(0, 90));
-await page.screenshot({ path: 'shot-console.png' });
+await page.screenshot({ path: shot('console.png') });
 
-// ── 2.5. create agent (local mode) → toast must disappear after ~3s ──
+// â”€â”€ 2.5. create agent (local mode) â†’ toast must disappear after ~3s â”€â”€
 await clickByText('Create Agent');
 await new Promise((r) => setTimeout(r, 700));
 await page.evaluate(() => {
@@ -119,16 +125,16 @@ const toastOk = toastMs !== null && toastMs >= 2400 && toastMs <= 4200;
 log('toast 3s timing:', toastOk ? 'OK' : 'FAIL');
 const agentPageOk = (await txt()).includes('UI Toast Agent');
 log('created agent visible on detail page:', agentPageOk);
-await page.screenshot({ path: 'shot-toast.png' });
+await page.screenshot({ path: shot('toast.png') });
 
-// ── 3. sign out → gate still works ──
+// â”€â”€ 3. sign out â†’ gate still works â”€â”€
 await clickByText('Sign Out');
 await new Promise((r) => setTimeout(r, 900));
 t = await txt();
 const gateOk = t.includes('Authentication required');
 log('gate after sign out:', gateOk);
 
-const glyphs = await page.evaluate(() => (document.body.innerText.match(/[→←✔✅❌🔥🚀⚡️🎉]/g) || []).join(''));
+const glyphs = await page.evaluate(() => (document.body.innerText.match(/[â†’â†âœ”âœ…âŒðŸ”¥ðŸš€âš¡ï¸ðŸŽ‰]/g) || []).join(''));
 log('glyphs:', glyphs || 'CLEAN');
 
 const results = {
@@ -145,3 +151,4 @@ log('SUMMARY:', failed.length === 0 ? 'ALL PASS' : 'FAILED: ' + failed.join(', '
 await browser.close();
 log('DONE');
 process.exit(failed.length ? 1 : 0);
+

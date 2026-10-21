@@ -46,9 +46,32 @@ const registry = env.AGENT_REGISTRY_ADDRESS;
 const policyEngine = env.POLICY_ENGINE_ADDRESS;
 const identityHash = keccak256(toHex(account.address.toLowerCase()));
 
-const out = { owner: account.address, registry, policyEngine, identityHash, txs: {} };
+const out = { owner: account.address, registry, policyEngine, txs: {} };
+
+// ── Base Verify: the registry's live policy + the gate itself ──
+out.baseVerify = {
+  registry: await pub.readContract({ address: registry, abi: registryAbi, functionName: 'REGISTRY' }),
+  provider: await pub.readContract({ address: registry, abi: registryAbi, functionName: 'provider' }),
+  conditions: await pub.readContract({ address: registry, abi: registryAbi, functionName: 'conditions' }),
+};
 
 out.balanceBefore = formatEther(await pub.getBalance({ address: account.address }));
+
+// A verification we cannot forge must be rejected by SignerRegistry — this is the
+// point of the onchain integration, so prove it before doing anything else.
+try {
+  await pub.simulateContract({
+    account,
+    address: registry,
+    abi: registryAbi,
+    functionName: 'createAgent',
+    args: [identityHash, BigInt(Math.floor(Date.now() / 1000) + 300), '0x' + '11'.repeat(65), 'Unverified', 'agentdesk://rejected'],
+  });
+  out.gate = { expected: 'revert', actual: 'ACCEPTED — verification is NOT enforced' };
+} catch (e) {
+  const reason = e.shortMessage || e.message || '';
+  out.gate = { expected: 'revert', actual: 'reverted', reason: reason.slice(0, 160) };
+}
 
 const next = await pub.readContract({ address: registry, abi: registryAbi, functionName: 'nextAgentId' });
 let agentId;
@@ -61,19 +84,34 @@ if (next > 1n) {
   }
 }
 
-if (agentId === undefined) {
+// A real createAgent needs { identityHash, expiration, signature } from
+// POST https://verify.base.dev/v1/onchain_verifications (see npm run verify:onchain).
+// Pass them as VERIFY_IDENTITY_HASH / VERIFY_EXPIRATION / VERIFY_SIGNATURE to run
+// the full write path; otherwise only the read-only + gate checks above run.
+if (agentId === undefined && env.VERIFY_IDENTITY_HASH && env.VERIFY_SIGNATURE) {
   const h1 = await wallet.writeContract({
     address: registry,
     abi: registryAbi,
     functionName: 'createAgent',
-    args: [identityHash, 'Chain Smoke Agent', 'agentdesk://smoke'],
+    args: [
+      env.VERIFY_IDENTITY_HASH,
+      BigInt(env.VERIFY_EXPIRATION || 0),
+      env.VERIFY_SIGNATURE,
+      'Chain Smoke Agent',
+      'agentdesk://smoke',
+    ],
   });
   const r1 = await pub.waitForTransactionReceipt({ hash: h1 });
   out.txs.createAgent = { hash: h1, status: r1.status, gasUsed: r1.gasUsed.toString() };
   const created = parseEventLogs({ abi: registryAbi, logs: r1.logs, eventName: 'AgentCreated' });
   agentId = created[0].args.agentId;
+} else if (agentId === undefined) {
+  out.createAgent = 'skipped — no Base Verify proof (set VERIFY_IDENTITY_HASH/VERIFY_EXPIRATION/VERIFY_SIGNATURE)';
 }
-out.agentId = agentId.toString();
+
+out.agentId = agentId === undefined ? null : agentId.toString();
+
+if (agentId !== undefined) {
 
 const h2 = await wallet.writeContract({
   address: policyEngine,
@@ -129,5 +167,7 @@ out.policyOnChain = await pub.readContract({
   functionName: 'getPolicy',
   args: [agentId],
 });
+
+} // end if (agentId !== undefined)
 
 console.log(JSON.stringify(out, (k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));

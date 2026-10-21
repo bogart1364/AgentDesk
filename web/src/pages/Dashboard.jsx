@@ -1,12 +1,62 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useSignMessage } from 'wagmi';
 import { StatCard, StatusBadge, Progress, EmptyState, SectionHeader } from '../components/ui.jsx';
 import { IconPlus, IconPulse, IconAgent, IconArrowRight } from '../components/Icons.jsx';
 import { fmtUsd, short, timeAgo } from '../lib/format.js';
+
+const VERIFY_PROVIDERS = ['x', 'coinbase', 'instagram', 'tiktok'];
+
+/** Base Verify deep link when running inside Coinbase Wallet / Base app. */
+function openVerify(redirectUrl) {
+  const inBaseApp = typeof window !== 'undefined' && (window.ethereum?.isCoinbaseWallet || /CoinbaseWallet|BaseApp/i.test(navigator.userAgent || ''));
+  if (inBaseApp) {
+    window.open(`cbwallet://miniapp?url=${encodeURIComponent(redirectUrl)}`, '_blank');
+  } else {
+    window.open(redirectUrl, '_blank');
+  }
+}
 
 export default function Dashboard({ me, agents, feed, openAgent, setPage }) {
   const activeAgents = agents.filter((a) => a.status === 'active').length;
   const totalSpendToday = feed.reduce((s, r) => s + (r.status === 'settled' ? r.amount : 0), 0);
   const verified = me?.human?.verified;
+  const { signMessageAsync } = useSignMessage();
+  const [provider, setProvider] = useState('x');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+
+  async function runVerify() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const { authFetch } = await import('../auth.jsx');
+      // 1. server builds the SIWE message carrying urn:verify provider/traits/action resources
+      const payload = await authFetch(`/verify/payload?provider=${provider}`);
+      // 2. the user signs it
+      const signature = await signMessageAsync({ message: payload.message });
+      // 3. backend validates traits + calls Base Verify, stores the Sybil token
+      const res = await authFetch('/verify/social', {
+        method: 'POST',
+        body: JSON.stringify({ message: payload.message, signature, provider }),
+      });
+      setNote(res.demo ? 'Demo verification (no BASE_VERIFY_SECRET_KEY set on the server).' : 'Verified.');
+      setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+      const data = e.data || {};
+      if (e.status === 404 && data.redirectUrl) {
+        openVerify(data.redirectUrl);
+        setNote('Finish OAuth at Base Verify, then click Verify again.');
+      } else if (e.status === 409) {
+        setNote('This identity is already linked to another wallet.');
+      } else if (data.traitsNotMet) {
+        setNote('Your account does not meet the required traits.');
+      } else {
+        setNote(e.message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="animate-in">
@@ -45,28 +95,27 @@ export default function Dashboard({ me, agents, feed, openAgent, setPage }) {
             <div className="text-xs mt-0.5" style={{ color: 'var(--ad-muted)' }}>
               Unverified: 1 agent max. Verified: 5 agents + full policy features.
             </div>
+            {note && (
+              <div className="text-xs mt-1.5" style={{ color: '#fbbf24' }}>
+                {note}
+              </div>
+            )}
           </div>
-          <button
-            onClick={async () => {
-              try {
-                const { authFetch } = await import('../auth.jsx');
-                // demo social verify: server returns deterministic identityHash without API key
-                await authFetch('/auth/verify-social', {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    siweMessage: `agentdesk social verify ${me.human.address}`,
-                    signature: '0x' + 'ab'.repeat(65),
-                    provider: 'x',
-                  }),
-                });
-                window.location.reload();
-              } catch (e) {
-                alert(e.message);
-              }
-            }}
-            className="btn-ghost text-xs"
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className="input text-xs"
+            style={{ width: 116 }}
+            disabled={busy}
           >
-            Verify via X
+            {VERIFY_PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {p.toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <button onClick={runVerify} className="btn-ghost text-xs" disabled={busy}>
+            {busy ? 'Signing…' : `Verify via ${provider.toUpperCase()}`}
           </button>
         </div>
       )}

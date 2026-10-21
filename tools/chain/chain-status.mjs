@@ -34,6 +34,22 @@ const j = (v) => JSON.stringify(v, (k, x) => (typeof x === 'bigint' ? x.toString
 console.log('registry', registry);
 console.log('policyEngine', policyEngine);
 
+// ── Base Verify policy (read live from the contract, as the backend does) ──
+try {
+  console.log('baseVerify.REGISTRY  =', await pub.readContract({ address: registry, abi: registryAbi, functionName: 'REGISTRY' }));
+  console.log('baseVerify.provider  =', await pub.readContract({ address: registry, abi: registryAbi, functionName: 'provider' }));
+  console.log('baseVerify.conditions=', j(await pub.readContract({ address: registry, abi: registryAbi, functionName: 'conditions' })));
+  console.log('baseVerify.cutoff    =', (await pub.readContract({ address: registry, abi: registryAbi, functionName: 'cutoffBlock' })).toString());
+  const isSigner = await pub.readContract({
+    address: await pub.readContract({ address: registry, abi: registryAbi, functionName: 'REGISTRY' }),
+    abi: [{ type: 'function', name: 'owner', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }],
+    functionName: 'owner',
+  });
+  console.log('baseVerify.registryOwner =', isSigner);
+} catch (e) {
+  console.log('Base Verify policy read failed:', e.shortMessage || e.message);
+}
+
 try {
   const next = await pub.readContract({ address: registry, abi: registryAbi, functionName: 'nextAgentId' });
   console.log('nextAgentId =', next.toString());

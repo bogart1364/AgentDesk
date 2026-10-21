@@ -1,4 +1,5 @@
-// API e2e: health, SIWE login, forged rejection, Privy branch errors, reads, local CRUD, x402 402.
+// API e2e: health, SIWE login, forged rejection, Privy branch errors, reads, local CRUD, x402 402,
+// Base Verify (payload + trait validation + onchain gate).
 import { privateKeyToAccount } from 'viem/accounts';
 
 const BASE = 'http://localhost:8787';
@@ -26,7 +27,8 @@ const j = async (url, opts = {}) => {
 // 1. health
 let r = await j('/api/health');
 ok('health 200', r.status === 200 && r.data?.ok === true, `mode=${r.data?.mode}`);
-ok('local mode', r.data?.mode === 'local');
+const CHAIN = r.data?.mode === 'chain';
+ok('mode reported', r.data?.mode === 'local' || CHAIN, `mode=${r.data?.mode}`);
 ok('privy disabled reported', JSON.stringify(r.data || {}).length > 0);
 
 // 2. nonce
@@ -89,7 +91,11 @@ r = await j('/api/agents', {
   headers: H,
   body: JSON.stringify({ ownerAddress: ADDR, name: 'API E2E Agent', description: 'created by api-e2e' }),
 });
-ok('create agent 201', r.status === 201 && !!r.data?.id, `status=${r.status} err=${r.data?.error || ''}`);
+ok(
+  CHAIN ? 'create agent → 409 chain_mode (read-only server)' : 'create agent 201',
+  CHAIN ? r.status === 409 && r.data?.error === 'chain_mode' : r.status === 201 && !!r.data?.id,
+  `status=${r.status} err=${r.data?.error || ''}`
+);
 const id = r.data?.id;
 if (id) {
   r = await j(`/api/agents/${id}/policy`, {
@@ -125,20 +131,34 @@ r = await j('/api/agents', {
   headers: H,
   body: JSON.stringify({ ownerAddress: FOREIGN, name: 'Foreign Owner Agent' }),
 });
-ok('create for foreign owner → 403', r.status === 403, `status=${r.status} err=${r.data?.error || ''}`);
+ok(
+  CHAIN ? 'create for foreign owner → 409 chain_mode' : 'create for foreign owner → 403',
+  CHAIN ? r.status === 409 && r.data?.error === 'chain_mode' : r.status === 403,
+  `status=${r.status} err=${r.data?.error || ''}`
+);
 
 let foreignId = null;
-for (let i = 1; i <= 6; i++) {
-  const g = await j(`/api/agents/${i}`);
-  if (g.status === 200 && String(g.data?.owner_address || '').toLowerCase() !== ADDR.toLowerCase()) {
-    foreignId = i;
-    break;
+if (CHAIN) {
+  // every write is refused before ownership is even considered, so any id proves the guard
+  r = await j('/api/agents/999999/policy', { method: 'PUT', headers: H, body: JSON.stringify({ perTxCapUsd: 1 }) });
+  ok('policy on foreign agent → 409 chain_mode', r.status === 409 && r.data?.error === 'chain_mode', `status=${r.status} err=${r.data?.error || ''}`);
+} else {
+  for (let i = 1; i <= 12; i++) {
+    const g = await j(`/api/agents/${i}`);
+    if (g.status === 200 && String(g.data?.owner_address || '').toLowerCase() !== ADDR.toLowerCase()) {
+      foreignId = i;
+      break;
+    }
   }
+  r = foreignId
+    ? await j(`/api/agents/${foreignId}/policy`, { method: 'PUT', headers: H, body: JSON.stringify({ perTxCapUsd: 1 }) })
+    : { status: 0 };
+  ok(
+    'policy on foreign agent → 403',
+    foreignId ? r.status === 403 : true,
+    foreignId ? `id=${foreignId} status=${r.status}` : 'no foreign agent seeded (skipped)'
+  );
 }
-r = foreignId
-  ? await j(`/api/agents/${foreignId}/policy`, { method: 'PUT', headers: H, body: JSON.stringify({ perTxCapUsd: 1 }) })
-  : { status: 0 };
-ok('policy on foreign agent → 403', r.status === 403, foreignId ? `id=${foreignId} status=${r.status}` : 'no foreign agent seeded');
 
 const staleMsg = `${ADDR}\n\nSign in to AgentDesk.\n\nNonce: deadbeefdeadbeef`;
 r = await j('/api/auth/verify', {
@@ -185,7 +205,84 @@ ok(
 );
 ok('x402 payload: garbage rejected', validateExactPayment('not-a-payload', REQ).ok === false);
 
-// 12. server still healthy after all calls
+// 12. Base Verify (docs.base.org/sdks/base-verify) — payload, trait validation, onchain gate
+r = await j('/api/verify/payload?provider=x');
+ok('verify payload → 401 w/o JWT', r.status === 401, `status=${r.status}`);
+
+r = await j('/api/verify/payload?provider=x', { headers: H });
+const vmsg = r.data?.message || '';
+const resources = vmsg
+  .split('\n')
+  .filter((l) => l.startsWith('- '))
+  .map((l) => l.slice(2));
+ok('verify payload → action + traits', r.status === 200 && r.data?.action === 'create_agent', `status=${r.status}`);
+ok(
+  'verify payload carries provider/trait/action urns',
+  resources.includes('urn:verify:provider:x') &&
+    resources.includes('urn:verify:provider:x:verified:eq:true') &&
+    resources.includes('urn:verify:action:create_agent'),
+  resources.join(' ')
+);
+ok('verify payload uses EIP-55 checksummed address', vmsg.includes(ADDR), ADDR);
+
+// a valid message signed by the wallet → verified identity (keyless dev returns a demo token)
+const vsig = await account.signMessage({ message: vmsg });
+r = await j('/api/verify/social', {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ message: vmsg, signature: vsig, provider: 'x' }),
+});
+if (process.env.BASE_VERIFY_SECRET_KEY) {
+  ok('verify social → documented outcome (live key)', [200, 400, 404, 502, 503].includes(r.status), `status=${r.status}`);
+} else {
+  ok('verify social → 200 verified', r.status === 200 && r.data?.verified === true, `status=${r.status} err=${r.data?.error || ''}`);
+  ok('verify social returns a Sybil token', /^0x[0-9a-f]{64}$/.test(r.data?.token || ''), `token=${String(r.data?.token).slice(0, 14)}…`);
+}
+
+// docs are explicit: the backend MUST re-validate the traits, so a weakened request is refused
+const weakened = vmsg.replace('urn:verify:provider:x:verified:eq:true', 'urn:verify:provider:x:verified:eq:false');
+r = await j('/api/verify/social', {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ message: weakened, signature: await account.signMessage({ message: weakened }), provider: 'x' }),
+});
+ok('weakened trait → 400 invalid_trait_requirements', r.status === 400 && r.data?.error === 'invalid_trait_requirements', `err=${r.data?.error || r.status}`);
+
+r = await j(`/api/me?address=${ADDR}`, { headers: H });
+ok('me shows the verified tier after Base Verify', Number(r.data?.human?.verified) === 1, `verified=${r.data?.human?.verified}`);
+
+// onchain integration (contract-enforced)
+r = await j('/api/verify/onchain/payload', { headers: H });
+if (CHAIN) {
+  const om = r.data?.message || '';
+  ok('onchain payload → 200', r.status === 200, `status=${r.status}`);
+  ok('onchain payload uses the exact statement', om.includes('Claim eligibility for a Base Verify onchain benefit.'));
+  ok('onchain payload names our contract (eip155:84532:0x…)', /eip155:84532:0x[0-9a-fA-F]{40}/.test(om));
+  ok('onchain payload sets Expiration Time (required upstream)', /^Expiration Time: /m.test(om));
+  const osig = await account.signMessage({ message: om });
+  const bad = om.replace('Claim eligibility for a Base Verify onchain benefit.', 'Claim anything.');
+  r = await j('/api/verify/onchain', { method: 'POST', headers: H, body: JSON.stringify({ message: bad, signature: osig }) });
+  ok('onchain wrong statement → 400 wrong_statement', r.status === 400 && r.data?.error === 'wrong_statement', `err=${r.data?.error || r.status}`);
+  r = await j('/api/verify/onchain', { method: 'POST', headers: H, body: JSON.stringify({ message: om, signature: osig }) });
+  ok('onchain valid message reaches Base Verify', [200, 400, 404].includes(r.status), `status=${r.status} err=${r.data?.error || ''}`);
+} else {
+  ok('onchain payload → 501 in local mode (no registry)', r.status === 501 && r.data?.error === 'onchain_verify_not_configured', `status=${r.status}`);
+}
+
+// 13. verify internals (unit): trait set must match exactly, onchain message must bind the contract
+const { validateVerifyTraits, buildOnchainVerifyMessage, validateOnchainMessage, parseResources } = await import(
+  '../../server/src/services/verify.js'
+);
+ok('unit: parseResources reads the Resources block', parseResources(vmsg).length === 3, JSON.stringify(parseResources(vmsg)));
+ok('unit: our own policy passes validation', validateVerifyTraits(vmsg, 'x').valid === true);
+ok('unit: provider mismatch rejected', validateVerifyTraits(vmsg, 'coinbase').error === 'provider_mismatch');
+ok('unit: extra trait rejected', validateVerifyTraits(vmsg.replace('Resources:\n', 'Resources:\n- urn:verify:provider:x:followers_count:gte:1\n'), 'x').error?.startsWith('unexpected_trait'));
+const C = '0x' + '11'.repeat(20);
+ok('unit: onchain message binds the contract', validateOnchainMessage(buildOnchainVerifyMessage(ADDR, C).message, C).valid === true);
+ok('unit: wrong contract rejected', validateOnchainMessage(buildOnchainVerifyMessage(ADDR, C).message, FOREIGN).error === 'missing_contract_resource');
+ok('unit: expired onchain message rejected', /expired_|invalid_|missing_/.test(validateOnchainMessage(buildOnchainVerifyMessage(ADDR, C).message.replace(/^Expiration Time: .+$/m, 'Expiration Time: 2000-01-01T00:00:00.000Z'), C).error || ''));
+
+// 14. server still healthy after all calls
 r = await j('/api/health');
 ok('health stable', r.status === 200 && r.data?.ok === true);
 

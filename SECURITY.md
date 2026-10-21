@@ -52,8 +52,24 @@ var would accept attacker-forged JWTs for any address (full account takeover).
 The demo-mode gate tested `process.env.BASE_VERIFYKEY` while the production call read
 `BASE_VERIFY_API_KEY`, so configuring the key still produced **mock verification** (`verified: 1` for
 free → sybil-resistance limit bypass).
-*Fix:* both use `BASE_VERIFY_API_KEY`. Demo mode is now explicit and only triggers when the key is
-genuinely absent.
+*Fix:* the module now reads the documented `BASE_VERIFY_SECRET_KEY` (legacy `BASE_VERIFY_API_KEY` kept
+as an alias), refuses in production with `501 verify_not_configured` when it is missing, and only
+returns a clearly-flagged demo identity in non-production.
+
+### HIGH — Base Verify was not actually enforced (`server/src/services/verify.js`, `contracts/src`)
+The adapter never called `/v1/base_verify_token`, the callback URL pointed at a non-existent host, and
+`createAgent` took a self-declared `bytes32 identityHash` — an attacker could pass any hash, so the
+Sybil gate was decorative.
+*Fix:* full rework against the Base Verify docs. `AgentRegistry` now extends the vendored
+`BaseVerifyConsumer` and calls the real `SignerRegistry`
+(`0x4f15593fbF7e3491d15080e1610E7AF8deBA1a02`), so `createAgent` requires
+`{ identityHash, expiration, signature }` from `POST /v1/onchain_verifications`; the on-chain policy
+(`provider = "coinbase"`, `coinbase_one_active eq true`) is what Base Verify checks. The social flow is
+implemented too (`/api/verify/payload`, `/api/verify/social`), re-validates the requested traits
+server-side before calling upstream (a weakened message is rejected with
+`400 invalid_trait_requirements`), stores the returned Sybil token per human and refuses reuse by a
+different wallet (`409 identity_already_verified`). Unverifiable `createAgent` calls now revert on
+Base Sepolia — asserted by `npm run chain:smoke` and `contracts/test/AgentRegistry.verify.test.js`.
 
 ### LOW — signed message without `Issued At` / `Nonce` accepted (`server/src/auth.js`)
 Freshness was only checked when the message happened to contain `Issued At:`, so a signed message
@@ -78,14 +94,22 @@ formatters moved to `web/src/lib/format.js`.
 
 ## Verification
 
-`npm run e2e:api` (29 assertions) covers the fixes:
+`npm run e2e:api` (47 assertions; 29 in local demo mode) covers the fixes:
 
 ```
-create without JWT → 401 · create for foreign owner → 403 · policy on foreign agent → 403
+create without JWT → 401 · create for foreign owner → 403/409 · policy on foreign agent → 403/409
 SIWE without Issued At → 401 (missing_issued_at)
 x402 payload: valid accepted · redirected payee rejected · underpayment rejected
              · expired authorization rejected · network mismatch rejected · garbage rejected
+verify payload: 401 w/o JWT · policy urns present · EIP-55 address
+verify social: 200 + Sybil token · weakened trait → 400 · verified tier on /api/me
+verify onchain: exact statement + contract resource + expiration · wrong statement → 400
+                · unverified wallet → 404 from Base Verify
 ```
+
+`contracts/test/AgentRegistry.verify.test.js` (7 tests) covers the contract gate: expired proof, rogue
+signer, wrong policy hash, wrong wallet, per-identity cap. `npm run chain:smoke` asserts the live gate
+on Base Sepolia (unverifiable `createAgent` reverts).
 
 `npm run e2e:ui` (10 checks) confirms the dashboard still creates agents, shows the 3s toast, and
 gates the console after sign-out.

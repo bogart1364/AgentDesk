@@ -58,6 +58,11 @@ export const humans = {
     persist();
     return data.humans[addr];
   },
+  /** Base Verify token lookup — the Sybil key must not be claimed by two wallets. */
+  findByVerifyToken(token) {
+    if (!token) return null;
+    return Object.values(data.humans).find((h) => h.verify_token === token) || null;
+  },
 };
 
 // ── agents ──

@@ -16,8 +16,10 @@
     "e2e:api": "node tools/e2e/api-e2e.mjs",
     "e2e:ui": "node tools/e2e/ui-e2e.mjs",
     "e2e:clean": "node tools/e2e/cleanup.mjs",
-    "chain:status": "node tools/chain/chain-status.mjs",
-    "chain:smoke": "node tools/chain/chain-smoke.mjs",
+  "chain:status": "node tools/chain/chain-status.mjs",
+  "chain:smoke": "node tools/chain/chain-smoke.mjs",
+  "chain:probe": "node tools/chain/rpc-probe.mjs",
+  "verify:onchain": "node tools/chain/verify-onchain.mjs",
     "faucet": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/faucet/mine-and-claim.ps1"
   },
   "devDependencies": {

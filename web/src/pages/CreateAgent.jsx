@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useWriteContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
 import { parseUnits, decodeEventLog } from 'viem';
 import { SectionHeader, Field, Spinner, ErrorBanner } from '../components/ui.jsx';
 import { IconAgent, IconArrowLeft } from '../components/Icons.jsx';
@@ -23,6 +23,7 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
   const [onChainAgentId, setOnChainAgentId] = useState(null);
 
   const { writeContractAsync, isPending: writing } = useWriteContract();
+  const { signMessageAsync } = useSignMessage();
   const { data: receipt, isLoading: confirming } = useWaitForTransactionReceipt({ hash: txHash });
 
   const validate = () => {
@@ -39,22 +40,35 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
     return Object.keys(e).length === 0;
   };
 
-  // chain mode: two on-chain txs (createAgent then setPolicy)
+  // chain mode: Base Verify onchain check + two on-chain txs (createAgent then setPolicy)
   const submitChain = async () => {
     if (!validate()) return;
     setBusy(true);
     setApiErr(null);
     try {
-      const owner = auth.authAddress;
-      // identityHash: derive from verified human if available, else placeholder
-      // (Base Verify supplies the real one; until then derive from address)
-      const identityHash = `0x${owner.replace(/^0x/, '').padStart(64, '0')}`;
+      // 1. server builds the SIWE message that names this AgentRegistry (Resources: eip155:84532:<registry>)
+      const payload = await authFetch('/verify/onchain/payload');
+      // 2. the wallet signs it — this is the Base Verify credential (no API key)
+      const siweSignature = await signMessageAsync({ message: payload.message });
+      // 3. Base Verify checks our contract's policy (coinbase_one_active eq true) and signs back
+      const verification = await authFetch('/verify/onchain', {
+        method: 'POST',
+        body: JSON.stringify({ message: payload.message, signature: siweSignature }),
+      });
 
+      // 4. createAgent(identityHash, expiration, signature, name, metadataURI) — the registry
+      //    re-verifies on-chain through SignerRegistry and dedupes on identityHash
       const hash = await writeContractAsync({
         address: CONTRACTS.registry,
         abi: registryAbi,
         functionName: 'createAgent',
-        args: [identityHash, form.name.trim(), form.description.trim()],
+        args: [
+          verification.identityHash,
+          BigInt(verification.expiration),
+          verification.signature,
+          form.name.trim(),
+          form.description.trim(),
+        ],
         chainId: CHAIN_ID,
       });
       setTxHash(hash);
@@ -62,7 +76,15 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
 
       // wait handled by useEffect on receipt
     } catch (e) {
-      setApiErr(e.shortMessage || e.message?.slice(0, 200) || 'Transaction rejected');
+      const data = e.data || {};
+      if (e.status === 404 && data.redirectUrl) {
+        window.open(data.redirectUrl, '_blank');
+        setApiErr('Base Verify needs a verified account for this wallet — finish the flow, then try again.');
+      } else if (data.conditionsNotSatisfied) {
+        setApiErr('This contract gates on an active Coinbase One subscription (coinbase_one_active eq true).');
+      } else {
+        setApiErr(data.error || e.shortMessage || e.message?.slice(0, 200) || 'Transaction rejected');
+      }
       setBusy(false);
     }
   };
@@ -176,9 +198,10 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
         >
           <span className="dot dot-live mt-1" />
           <span>
-            <span className="text-white font-medium">Chain mode:</span> creating an agent sends 2 real
-            transactions on Base Sepolia — <span className="mono">createAgent</span> +{' '}
-            <span className="mono">setPolicy</span>. Wallet confirmation required.
+            <span className="text-white font-medium">Chain mode:</span> Base Verify checks the wallet against
+            this contract's policy (<span className="mono">coinbase · coinbase_one_active eq true</span>), then 2
+            real transactions run on Base Sepolia — <span className="mono">createAgent(identityHash, expiration,
+            signature, …)</span> + <span className="mono">setPolicy</span>. Wallet confirmation required.
           </span>
         </div>
       )}

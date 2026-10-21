@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.28;
+
+import {BaseVerifyConsumer} from "./baseverify/BaseVerifyConsumer.sol";
 
 /// @title AgentRegistry
-/// @notice Registers AI agents linked to a verified human identity.
-/// @dev Uses Base Verify identityHash for sybil resistance (one human → max N agents).
-contract AgentRegistry {
+/// @notice Registers AI agents linked to a Base Verify-verified human identity.
+/// @dev Extends BaseVerifyConsumer, so `createAgent` only accepts a short-lived verification
+///      signed by Base Verify's SignerRegistry and recomputes the policy hash from this
+///      contract's own `provider()` / `conditions()`. Sybil resistance: the deterministic
+///      `identityHash` is deduped here and capped per identity.
+///      Docs: https://docs.base.org/sdks/base-verify/verify-users-onchain
+contract AgentRegistry is BaseVerifyConsumer {
     // ─────────────────────────────────────────────
     // Types
     // ─────────────────────────────────────────────
@@ -52,6 +58,7 @@ contract AgentRegistry {
     error AgentNotFound(uint256 agentId);
     error NotAgentOwner(uint256 agentId);
     error EmptyName();
+    error EmptyIdentity();
 
     // ─────────────────────────────────────────────
     // Modifiers
@@ -69,10 +76,34 @@ contract AgentRegistry {
     // ─────────────────────────────────────────────
     // Constructor
     // ─────────────────────────────────────────────
-    constructor(uint256 _maxAgentsPerIdentity) {
+    /// @param _maxAgentsPerIdentity agent cap for one verified identity
+    /// @param verifyRegistry Base Verify SignerRegistry for this chain
+    ///        (Base Sepolia: 0x4f15593fbF7e3491d15080e1610E7AF8deBA1a02)
+    constructor(uint256 _maxAgentsPerIdentity, address verifyRegistry) BaseVerifyConsumer(verifyRegistry) {
         owner = msg.sender;
         maxAgentsPerIdentity = _maxAgentsPerIdentity;
         nextAgentId = 1;
+    }
+
+    // ─────────────────────────────────────────────
+    // Base Verify policy (MUST stay immutable)
+    // ─────────────────────────────────────────────
+
+    /// @notice Identity provider this registry gates on.
+    function provider() external pure override returns (string memory) {
+        return "coinbase";
+    }
+
+    /// @notice Eligibility: an active Coinbase One subscription.
+    function conditions() external pure override returns (Condition[] memory) {
+        Condition[] memory c = new Condition[](1);
+        c[0] = Condition({name: "coinbase_one_active", op: "eq", value: "true"});
+        return c;
+    }
+
+    /// @notice Credentials older than this block are refused by the Base Verify backend.
+    function cutoffBlock() public pure override returns (uint256) {
+        return 1;
     }
 
     // ─────────────────────────────────────────────
@@ -80,15 +111,27 @@ contract AgentRegistry {
     // ─────────────────────────────────────────────
 
     /// @notice Create a new agent bound to the caller's verified identity.
-    /// @param identityHash Base Verify identityHash proving unique human
+    /// @dev Reverts with the SignerRegistry's `VerificationExpired` / `InvalidSignature` /
+    ///      `NotSigner` when the Base Verify proof is invalid, and with `AgentLimitReached`
+    ///      when this identity already holds `maxAgentsPerIdentity` agents.
+    /// @param identityHash Base Verify identityHash (dedupe key, per contract)
+    /// @param expiration Unix seconds after which the verification is invalid
+    /// @param signature EIP-712 verification signature from Base Verify
     /// @param name Human-readable agent name
     /// @param metadataURI Optional off-chain metadata (IPFS/HTTP JSON)
     function createAgent(
         bytes32 identityHash,
+        uint40 expiration,
+        bytes calldata signature,
         string calldata name,
         string calldata metadataURI
     ) external returns (uint256 agentId) {
         if (bytes(name).length == 0) revert EmptyName();
+        if (identityHash == bytes32(0)) revert EmptyIdentity();
+        if (_agentsByIdentity[identityHash].length >= maxAgentsPerIdentity) revert AgentLimitReached();
+
+        // checks the signature, the expiry and that it is bound to THIS contract's policy
+        _verify(identityHash, expiration, signature);
 
         Agent storage a = agents[nextAgentId];
         a.owner         = msg.sender;

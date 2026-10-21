@@ -2,8 +2,19 @@
   "network": "baseSepolia",
   "chainId": 84532,
   "deployer": "0x154DC22B891849AED2AAbc6646C323c87AC50788",
-  "AgentRegistry": "0x9869658193c68342A986fabe3b2E5A9b2F6BD476",
-  "PolicyEngine": "0x9Dc1Ba1A80885f339F906A7f73d16D292eA21E1b",
-  "deployBlock": 48298028,
-  "deployedAt": "2026-10-18T22:59:05.105Z"
+  "AgentRegistry": "0x4b9F26A00C0c5Cd940221d6A44326F203aa59Be5",
+  "PolicyEngine": "0x5545EaC0b1ACadDB117b9E12aE59290cBDe18a4C",
+  "baseVerifySignerRegistry": "0x4f15593fbF7e3491d15080e1610E7AF8deBA1a02",
+  "verifyPolicy": {
+    "provider": "coinbase",
+    "conditions": [
+      {
+        "name": "coinbase_one_active",
+        "op": "eq",
+        "value": "true"
+      }
+    ]
+  },
+  "deployBlock": 48338969,
+  "deployedAt": "2026-10-19T21:43:47.366Z"
 }

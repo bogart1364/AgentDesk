@@ -14,7 +14,15 @@ import { createNonce, verifyLogin, verifyPrivyLogin, requireAuth, optionalAuth }
 import * as chain from './chain.js';
 import { humans, agents, policies, allowlist, spend, policyEngine, fmtUsdc, dbInfo } from './db/index.js';
 import { paymentMiddleware } from './middleware/x402.js';
-import { verifySocialAccount } from './services/verify.js';
+import {
+  checkSocialVerification,
+  buildVerifyMessage,
+  verifyPolicySummary,
+  buildOnchainVerifyMessage,
+  validateOnchainMessage,
+  fetchOnchainVerification,
+  onchainVerifyConfigured,
+} from './services/verify.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, '..', '..', 'web', 'dist');
@@ -223,29 +231,94 @@ app.post('/api/auth/verify', rateLimit({ windowMs: 60_000, max: 30, name: 'verif
   }
 });
 
-// Base Verify (social identity → identityHash) — kept for registry createAgent
-app.post('/api/auth/verify-social', requireAuth, async (req, res) => {
+// ─────────────────────────────────────────────
+// Base Verify — https://docs.base.org/sdks/base-verify
+//
+//  Social (backend-enforced):  GET  /api/verify/payload  → SIWE message w/ urn:verify resources
+//                              POST /api/verify/social   → {token, action, wallet} (Sybil token)
+//  Onchain (contract-enforced): GET  /api/verify/onchain/payload → SIWE naming our registry
+//                               POST /api/verify/onchain  → {identityHash, expiration, signature}
+// ─────────────────────────────────────────────
+const providerSchema = z.enum(['x', 'coinbase', 'instagram', 'tiktok']).default('x');
+
+app.get('/api/verify/payload', requireAuth, (req, res) => {
+  const provider = providerSchema.parse(req.query.provider);
+  const summary = verifyPolicySummary(provider);
+  const payload = buildVerifyMessage(req.user.address, provider);
+  res.json({ ...summary, ...payload });
+});
+
+app.get('/api/verify/onchain/payload', requireAuth, (req, res) => {
+  if (!onchainVerifyConfigured()) return res.status(501).json({ error: 'onchain_verify_not_configured' });
+  res.json(buildOnchainVerifyMessage(req.user.address));
+});
+
+const socialVerify = async (req, res) => {
   try {
     const body = z
       .object({
-        siweMessage: z.string().min(1),
+        message: z.string().min(1),
         signature: z.string().min(1),
-        provider: z.enum(['x', 'coinbase', 'instagram', 'tiktok']).default('x'),
+        provider: providerSchema.optional(),
       })
-      .parse(req.body);
+      .parse(req.body || {});
 
-    const result = await verifySocialAccount(req.user.address, body.siweMessage, body.signature, body.provider);
-    humans.upsert(req.user.address, {
-      identity_hash: result.identityHash,
-      verified: 1,
-      verify_provider: body.provider,
+    const provider = body.provider || 'x';
+    const result = await checkSocialVerification({
+      address: req.user.address,
+      message: body.message,
+      signature: body.signature,
+      provider,
     });
-    res.json({ ...result, address: req.user.address });
+
+    if (result.status === 200) {
+      const token = result.body.token;
+      // one verified identity = one token across wallets (docs: store the token, reject reuse)
+      const existing = humans.findByVerifyToken(token);
+      if (existing && existing.address !== req.user.address) {
+        return res.status(409).json({ error: 'identity_already_verified' });
+      }
+      humans.upsert(req.user.address, {
+        identity_hash: result.body.identityHash,
+        verified: 1,
+        verify_provider: provider,
+        verify_action: result.body.action,
+        verify_token: token,
+        verified_at: now(),
+      });
+      return res.json({ ...result.body, address: req.user.address });
+    }
+
+    res.status(result.status).json(result.body);
   } catch (e) {
     if (e instanceof z.ZodError) return res.status(400).json({ error: 'validation', issues: e.issues });
-    res.status(500).json({ error: e.message });
+    console.error('[verify/social]', e?.message);
+    res.status(500).json({ error: 'internal' });
   }
-});
+};
+
+app.post('/api/verify/social', rateLimit({ windowMs: 60_000, max: 30, name: 'verify' }), requireAuth, socialVerify);
+// legacy path kept for clients built before the Base Verify rework
+app.post('/api/auth/verify-social', rateLimit({ windowMs: 60_000, max: 30, name: 'verify' }), requireAuth, socialVerify);
+
+app.post(
+  '/api/verify/onchain',
+  rateLimit({ windowMs: 60_000, max: 30, name: 'verify-onchain' }),
+  requireAuth,
+  async (req, res) => {
+    try {
+      const body = z
+        .object({ message: z.string().min(1), signature: z.string().min(1) })
+        .parse(req.body || {});
+      const result = await fetchOnchainVerification({ address: req.user.address, ...body });
+      res.status(result.status === 200 ? 200 : result.status).json(result.body);
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ error: 'validation', issues: e.issues });
+      console.error('[verify/onchain]', e?.message);
+      res.status(500).json({ error: 'internal' });
+    }
+  }
+);
 
 // ─────────────────────────────────────────────
 // Me
