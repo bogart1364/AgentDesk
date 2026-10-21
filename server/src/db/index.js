@@ -7,7 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, 'agentdesk-data.json');
+// Serverless (Vercel) filesystems are read-only outside /tmp, so keep the file
+// wherever we are allowed to write; persistence is best-effort either way.
+const DB_PATH =
+  process.env.AGENTDESK_DB ||
+  (process.env.VERCEL ? path.join('/tmp', 'agentdesk-data.json') : path.join(__dirname, 'agentdesk-data.json'));
 
 // ── load / init ──
 let data = {
@@ -27,8 +31,17 @@ if (fs.existsSync(DB_PATH)) {
   }
 }
 
+let persistWarned = false;
 function persist() {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data));
+  // Writes must never break a request: a read-only FS only costs durability.
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(data));
+  } catch (e) {
+    if (!persistWarned) {
+      persistWarned = true;
+      console.warn(`[db] persistence disabled (${e.code || e.message}) — running in memory`);
+    }
+  }
 }
 
 const now = () => Math.floor(Date.now() / 1000);

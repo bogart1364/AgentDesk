@@ -6,8 +6,7 @@
   "framework": "vite",
   "functions": {
     "api/index.js": {
-      "maxDuration": 30,
-      "memory": 512
+      "maxDuration": 30
     }
   },
   "rewrites": [
@@ -27,8 +26,5 @@
         { "key": "Cache-Control", "value": "no-store" }
       ]
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
