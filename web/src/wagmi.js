@@ -1,6 +1,7 @@
 import { http, createConfig, WagmiProvider as PlainWagmiProvider } from 'wagmi';
 import { baseSepolia, base } from 'wagmi/chains';
 import { injected, coinbaseWallet } from 'wagmi/connectors';
+import { Attribution } from 'ox/erc8021';
 import {
   createConfig as privyCreateConfig,
   WagmiProvider as PrivyWagmiProvider,
@@ -52,3 +53,10 @@ export const CONTRACTS = {
 };
 
 export const CHAIN_MODE = CONTRACTS.registry && CONTRACTS.policy ? 'chain' : 'local';
+
+// Base Builder Code (base.dev > Settings > Builder Code) — ERC-8021 attribution.
+// Set VITE_BUILDER_CODE at build time and every write below carries the suffix.
+export const BUILDER_CODE = import.meta.env.VITE_BUILDER_CODE || '';
+export const TX_ATTRIBUTION = BUILDER_CODE
+  ? { dataSuffix: Attribution.toDataSuffix({ codes: [BUILDER_CODE] }) }
+  : {};

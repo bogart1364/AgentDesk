@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fmtUsd, short, timeAgo } from '../lib/format.js';
 import { authFetch } from '../auth.jsx';
-import { CONTRACTS, CHAIN_MODE, CHAIN_ID } from '../wagmi.js';
+import { CONTRACTS, CHAIN_MODE, CHAIN_ID, TX_ATTRIBUTION } from '../wagmi.js';
 import { useWriteContract } from 'wagmi';
 import { parseUnits } from 'viem';
 import policyAbi from '../abi/PolicyEngine.json';
@@ -38,7 +38,7 @@ export default function AgentDetail({ agentId, onBack, refresh, showToast }) {
   const { writeContractAsync, isPending: txPending } = useWriteContract();
 
   const onChain = async (address, abi, functionName, args, okMsg) => {
-    const hash = await writeContractAsync({ address, abi, functionName, args, chainId: CHAIN_ID });
+    const hash = await writeContractAsync({ address, abi, functionName, args, chainId: CHAIN_ID, ...TX_ATTRIBUTION });
     showToast('success', `${functionName} sent — confirming…`);
     const { waitForTransactionReceipt } = await import('wagmi/actions');
     const { wagmiConfig } = await import('../wagmi.js');

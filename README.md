@@ -94,6 +94,12 @@ a wallet that holds the verified trait.
 build (`npm run build`), because the chain-mode create flow needs a real Base Verify proof; that path
 is covered by `contracts/test/AgentRegistry.verify.test.js` + `npm run chain:smoke` instead.
 
+### Builder Code (ERC-8021 attribution)
+
+Claim a code at <https://base.dev> (Settings → Builder Code), then build with `VITE_BUILDER_CODE=bc_…`
+so every wallet write (`createAgent`, `setPolicy`, `recordSpend`, …) carries the suffix and the traffic
+is attributed to AgentDesk on base.dev. Unset ⇒ no suffix, nothing else changes.
+
 In chain mode the API is **read-only**: it lists agents via `nextAgentId()` + `getAgent(i)`,
 reads spend/allowlist history from chunked `eth_getLogs` (public Base RPC caps a query at 200
 blocks, so windows are scanned in parallel — tune `LOG_MAX_WINDOWS`, and `FEED_LOOKBACK_BLOCKS`

@@ -135,6 +135,7 @@ Environment Variables, Production + Preview):
 | `VITE_POLICY_ENGINE_ADDRESS` | same as policy |
 | `VITE_CHAIN_ID` | `84532` |
 | `VITE_PRIVY_APP_ID` | same as `PRIVY_APP_ID` |
+| `VITE_BUILDER_CODE` | optional: base.dev → Settings → Builder Code (ERC-8021 attribution) |
 
 > `VITE_*` values are baked into the JS bundle at build time (public by design —
 > they are on-chain addresses). `AUTH_SECRET`, `PRIVY_APP_SECRET` and `PAY_TO`

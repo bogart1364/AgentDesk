@@ -4,7 +4,7 @@ import { parseUnits, decodeEventLog } from 'viem';
 import { SectionHeader, Field, Spinner, ErrorBanner } from '../components/ui.jsx';
 import { IconAgent, IconArrowLeft } from '../components/Icons.jsx';
 import { authFetch } from '../auth.jsx';
-import { CONTRACTS, CHAIN_MODE, CHAIN_ID } from '../wagmi.js';
+import { CONTRACTS, CHAIN_MODE, CHAIN_ID, TX_ATTRIBUTION } from '../wagmi.js';
 import registryAbi from '../abi/AgentRegistry.json';
 import policyAbi from '../abi/PolicyEngine.json';
 
@@ -70,6 +70,7 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
           form.description.trim(),
         ],
         chainId: CHAIN_ID,
+        ...TX_ATTRIBUTION,
       });
       setTxHash(hash);
       showToast('success', 'Transaction sent — confirming on Base…');
@@ -126,6 +127,7 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
             parseUnits(String(form.monthlyBudgetUsd), 6),
           ],
           chainId: CHAIN_ID,
+          ...TX_ATTRIBUTION,
         });
 
         showToast('success', 'Setting spend policy on-chain…');
