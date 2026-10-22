@@ -180,6 +180,9 @@ Express app (`api/index.js`), SPA fallback rewrite.
   check `PAY_TO` and that the buyer wallet has Base Sepolia USDC.
 - **`409 chain_mode`** — server is in chain mode; that write must go through the
   wallet (on-chain tx), not the JSON-DB API.
+- **`400 unknown_or_expired_challenge`** — the SIWE message was minted by another deployment (different
+  `AUTH_SECRET`) or is older than 10 minutes. The nonce is a stateless HMAC, so any instance accepts it;
+  just ask for a fresh payload. Client-chosen nonces are rejected by design.
 - **`createAgent` reverts** — Base Verify rejected the proof: expired signature, wallet differs from the
   one that requested the proof, or the account does not satisfy `coinbase_one_active eq true`. Re-run
   `npm run verify:onchain` to see the exact reason.

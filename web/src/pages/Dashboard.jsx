@@ -32,6 +32,10 @@ export default function Dashboard({ me, agents, feed, openAgent, setPage }) {
       const { authFetch } = await import('../auth.jsx');
       // 1. server builds the SIWE message carrying urn:verify provider/traits/action resources
       const payload = await authFetch(`/verify/payload?provider=${provider}`);
+      if (payload.isProd && !payload.configured) {
+        setNote('Base Verify is not configured on this deployment (BASE_VERIFY_SECRET_KEY is missing).');
+        return;
+      }
       // 2. the user signs it
       const signature = await signMessageAsync({ message: payload.message });
       // 3. backend validates traits + calls Base Verify, stores the Sybil token
@@ -48,6 +52,10 @@ export default function Dashboard({ me, agents, feed, openAgent, setPage }) {
         setNote('Finish OAuth at Base Verify, then click Verify again.');
       } else if (e.status === 409) {
         setNote('This identity is already linked to another wallet.');
+      } else if (e.status === 501) {
+        setNote('Base Verify is not configured on this deployment.');
+      } else if (data.error === 'unknown_or_expired_challenge') {
+        setNote('This verification request expired. Click Verify again.');
       } else if (data.traitsNotMet) {
         setNote('Your account does not meet the required traits.');
       } else {

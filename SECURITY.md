@@ -116,6 +116,14 @@ gates the console after sign-out.
 
 ## Known limitations / by design
 
+- **Base Verify nonces are time-bound, not single-use.** The social flow runs on serverless instances with
+  no shared memory, so the nonce is a stateless HMAC (address + provider + 10-minute expiry) instead of a
+  stored challenge. A captured message can be replayed within that window; Base Verify still returns the
+  same deterministic token, and the per-token dedupe blocks a second wallet from claiming the identity.
+  Tighten `VERIFY_TTL_MS` or move the challenge into a shared store if strict single-use matters.
+- **JSON demo DB is per-instance on serverless.** On Vercel it lives in `/tmp` and degrades to memory
+  when the filesystem is read-only, so `humans` rows are not shared between instances; chain state is
+  unaffected (it is read from the contracts). Use Postgres for multi-instance production.
 - **Facilitator trust.** Settlement is delegated to the configured `X402_FACILITATOR_URL`; the
   facilitator verifies the EIP-3009 signature and moves the USDC. We verify the *binding*
   (payee/amount/asset/window), not the signature itself. Point `X402_FACILITATOR_URL` at a

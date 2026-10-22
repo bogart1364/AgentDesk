@@ -248,6 +248,16 @@ r = await j('/api/verify/social', {
 });
 ok('weakened trait → 400 invalid_trait_requirements', r.status === 400 && r.data?.error === 'invalid_trait_requirements', `err=${r.data?.error || r.status}`);
 
+// the nonce is HMAC-bound to address+provider+expiry, so a client cannot mint one
+const { buildVerifyMessage: buildVM } = await import('../../server/src/services/verify.js');
+const forgedNonce = buildVM(ADDR, 'x', 'deadbeefdeadbeef').message;
+r = await j('/api/verify/social', {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ message: forgedNonce, signature: await account.signMessage({ message: forgedNonce }), provider: 'x' }),
+});
+ok('client-chosen nonce → 400', r.status === 400 && r.data?.error === 'unknown_or_expired_challenge', `err=${r.data?.error || r.status}`);
+
 r = await j(`/api/me?address=${ADDR}`, { headers: H });
 ok('me shows the verified tier after Base Verify', Number(r.data?.human?.verified) === 1, `verified=${r.data?.human?.verified}`);
 
@@ -281,6 +291,22 @@ const C = '0x' + '11'.repeat(20);
 ok('unit: onchain message binds the contract', validateOnchainMessage(buildOnchainVerifyMessage(ADDR, C).message, C).valid === true);
 ok('unit: wrong contract rejected', validateOnchainMessage(buildOnchainVerifyMessage(ADDR, C).message, FOREIGN).error === 'missing_contract_resource');
 ok('unit: expired onchain message rejected', /expired_|invalid_|missing_/.test(validateOnchainMessage(buildOnchainVerifyMessage(ADDR, C).message.replace(/^Expiration Time: .+$/m, 'Expiration Time: 2000-01-01T00:00:00.000Z'), C).error || ''));
+
+// the challenge must be stateless: Vercel runs several instances and a fresh module
+// (empty memory) has to accept a nonce minted by another one
+const { buildVerifyMessage, checkSocialVerification, verifyNonce, parseResources: parseRes2 } = await import(
+  '../../server/src/services/verify.js'
+);
+const fresh = await import('../../server/src/services/verify.js?instance=2');
+const p1 = fresh.buildVerifyMessage(ADDR, 'x');
+const s1 = await account.signMessage({ message: p1.message });
+const cross = await checkSocialVerification({ address: ADDR, message: p1.message, signature: s1, provider: 'x' });
+ok('unit: nonce works across module instances (serverless)', cross.status === 200, `status=${cross.status} err=${cross.body?.error || ''}`);
+const p2 = buildVerifyMessage(ADDR, 'x');
+ok('unit: fresh nonce verifies', verifyNonce(p2.nonce, ADDR, 'x').valid === true);
+ok('unit: nonce is bound to the provider', verifyNonce(p2.nonce, ADDR, 'coinbase').valid === false);
+ok('unit: client-chosen nonce rejected', verifyNonce('deadbeefdeadbeef', ADDR, 'x').valid === false);
+ok('unit: resource parsing still matches', parseRes2(p2.message).length === 3);
 
 // 14. server still healthy after all calls
 r = await j('/api/health');

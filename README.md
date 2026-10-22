@@ -150,6 +150,8 @@ returns the Sybil `token`, which is stored per human so one verified identity ca
 another wallet (409 `identity_already_verified`). The backend re-validates the requested traits before
 calling upstream; `404` ⇒ the user must verify at `verify.base.dev` first, `400` ⇒ traits not satisfied.
 Without a key the endpoint refuses in production (501) and returns a clearly-flagged demo identity in dev.
+The nonce is a stateless HMAC over address+provider+expiry (`AUTH_SECRET`), so verification works across
+serverless instances without shared memory.
 
 **2. Verify Users Onchain (contract-enforced)** — `AgentRegistry` extends `BaseVerifyConsumer`, so
 `createAgent(identityHash, expiration, signature, name, metadataURI)` only succeeds with a fresh proof

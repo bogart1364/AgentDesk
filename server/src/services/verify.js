@@ -55,11 +55,37 @@ const traitUrn = (provider, name, spec) => {
 };
 const actionUrn = (action) => `urn:verify:action:${action}`;
 
-// ── in-memory verify challenges (nonce + exact message we asked the user to sign) ──
-const challenges = new Map();
+// ── stateless verify nonce ──
+// Serverless hosts run several instances with no shared memory, so the challenge
+// cannot live in a Map. The nonce carries its own expiry plus an HMAC over
+// address+provider+timestamp, which any instance can verify with AUTH_SECRET.
+const nonceSig = (addr, provider, ts, rand) =>
+  crypto
+    .createHmac('sha256', cfg.authSecret || 'dev-only-change-me')
+    .update(`base-verify|${addr}|${provider}|${ts}|${rand}`)
+    .digest('hex')
+    .slice(0, 32);
 
-function prune() {
-  for (const [k, v] of challenges) if (v.expiresAt < Date.now()) challenges.delete(k);
+function makeNonce(addr, provider, expiresAt) {
+  const ts = Math.floor(expiresAt / 1000).toString(36);
+  const rand = crypto.randomBytes(6).toString('hex');
+  // SIWE nonces are alphanumeric only (8+): t<expiry base36><rand><hmac>
+  return `t${ts}${rand}${nonceSig(addr, provider, ts, rand)}`;
+}
+
+export function verifyNonce(nonce, addr, provider) {
+  const m = /^t([0-9a-z]+)([0-9a-f]{12})([0-9a-f]{32})$/.exec(String(nonce || ''));
+  if (!m) return { valid: false, error: 'unknown_or_expired_challenge' };
+  const [, ts, rand, sig] = m;
+  const expected = nonceSig(String(addr).toLowerCase(), String(provider).toLowerCase(), ts, rand);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { valid: false, error: 'unknown_or_expired_challenge' };
+  }
+  const expMs = parseInt(ts, 36) * 1000;
+  if (!Number.isFinite(expMs) || expMs < Date.now()) return { valid: false, error: 'unknown_or_expired_challenge' };
+  return { valid: true };
 }
 
 /**
@@ -74,9 +100,9 @@ export function buildVerifyMessage(address, provider = 'x', nonce) {
   const policy = VERIFY_POLICY[p];
   if (!policy) throw new Error(`unsupported_provider:${provider}`);
 
-  const n = nonce || crypto.randomBytes(16).toString('hex');
   const issuedAt = new Date().toISOString();
   const expiresAt = Date.now() + VERIFY_TTL_MS;
+  const n = nonce || makeNonce(key, p, expiresAt);
 
   const resources = [
     providerUrn(p),
@@ -100,8 +126,6 @@ export function buildVerifyMessage(address, provider = 'x', nonce) {
     ...resources.map((r) => `- ${r}`),
   ].join('\n');
 
-  challenges.set(`${key}:${n}`, { provider: p, message, expiresAt, resources });
-  prune();
   return { message, nonce: n, provider: p, action: policy.action, traits: policy.traits, expiresAt };
 }
 
@@ -202,14 +226,11 @@ export async function checkSocialVerification({ address, message, signature, pro
     return { status: 400, body: { error: 'address_mismatch' } };
   }
 
-  // nonce we issued for this address must be the one signed (single use)
-  const nonceMatch = String(message).match(/Nonce: ([a-fA-F0-9]{8,})/);
+  // nonce must be one we issued for this address+provider (HMAC, works on any instance)
+  const nonceMatch = String(message).match(/Nonce: ([a-zA-Z0-9]{8,})/);
   if (!nonceMatch) return { status: 400, body: { error: 'missing_nonce' } };
-  const key = `${addr}:${nonceMatch[1]}`;
-  const challenge = challenges.get(key);
-  if (!challenge) return { status: 400, body: { error: 'unknown_or_expired_challenge' } };
-  if (challenge.provider !== p) return { status: 400, body: { error: 'provider_mismatch' } };
-  challenges.delete(key);
+  const nonceCheck = verifyNonce(nonceMatch[1], addr, p);
+  if (!nonceCheck.valid) return { status: 400, body: { error: nonceCheck.error } };
 
   // local signature check is a fast-fail for EOA wallets; smart-wallet
   // (ERC-1271/6492) signatures are still validated by Base Verify itself.
