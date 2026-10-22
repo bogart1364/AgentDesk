@@ -3,15 +3,15 @@ import { IconAlert, IconCheck } from './Icons.jsx';
 
 export function StatCard({ label, value, sub, accent = false, tag }) {
   return (
-    <div className="panel p-5" style={accent ? { borderColor: 'rgba(11,19,250,0.5)', boxShadow: '0 0 24px rgba(11,19,250,0.12)' } : undefined}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="section-tag">{tag || label}</span>
+    <div className="panel p-4 sm:p-5 min-w-0" style={accent ? { borderColor: 'rgba(11,19,250,0.5)', boxShadow: '0 0 24px rgba(11,19,250,0.12)' } : undefined}>
+      <div className="flex items-center justify-between mb-2 sm:mb-3">
+        <span className="section-tag truncate">{tag || label}</span>
       </div>
-      <div className="stat-value" style={accent ? { color: 'var(--ad-blue-l)' } : undefined}>
+      <div className="stat-value truncate" style={accent ? { color: 'var(--ad-blue-l)' } : undefined}>
         {value}
       </div>
       {sub && (
-        <div className="mt-2 font-mono text-[10px] tracking-wide" style={{ color: 'var(--ad-muted)' }}>
+        <div className="mt-2 font-mono text-[10px] tracking-wide truncate" style={{ color: 'var(--ad-muted)' }}>
           {sub}
         </div>
       )}
@@ -92,12 +92,12 @@ export function SuccessBanner({ message }) {
 
 export function SectionHeader({ tag, title, right }) {
   return (
-    <div className="flex items-end justify-between mb-8">
-      <div>
-        <div className="section-tag mb-3">{tag}</div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">{title}</h1>
+    <div className="flex flex-wrap items-end justify-between gap-3 mb-6 sm:mb-8">
+      <div className="min-w-0">
+        <div className="section-tag mb-2 sm:mb-3">{tag}</div>
+        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">{title}</h1>
       </div>
-      {right}
+      {right && <div className="shrink-0">{right}</div>}
     </div>
   );
 }

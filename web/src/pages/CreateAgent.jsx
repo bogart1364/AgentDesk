@@ -210,7 +210,7 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
 
       {apiErr && <ErrorBanner message={apiErr} onDismiss={() => setApiErr(null)} />}
 
-      <div className="panel p-6">
+      <div className="panel p-4 sm:p-6">
         <form onSubmit={onSubmit} className="space-y-5">
           <Field label="Agent Name" error={errors.name}>
             <input
@@ -271,7 +271,7 @@ export default function CreateAgent({ auth, onCreated, setPage, showToast }) {
             <button type="button" onClick={() => setPage('agents')} className="btn-ghost flex-1">
               Cancel
             </button>
-            <button type="submit" disabled={busy || writing || confirming || !form.name.trim()} className="btn-primary flex-1">
+            <button type="submit" disabled={busy || writing || confirming || !form.name.trim()} className="btn-primary flex-1 whitespace-nowrap">
               {busy || writing || confirming ? (
                 <><Spinner size={14} /> {confirming ? 'Confirming…' : 'Confirm in wallet…'}</>
               ) : (

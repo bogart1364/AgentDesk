@@ -25,10 +25,10 @@ export default function Feed({ feed, refresh }) {
         }
       />
 
-      <div className="panel-plain overflow-hidden">
+      <div className="panel-plain overflow-x-auto">
         {/* table header */}
         <div
-          className="px-5 py-3 flex items-center gap-4 thead border-b"
+          className="px-5 py-3 flex items-center gap-4 thead border-b min-w-[660px]"
           style={{ borderColor: 'var(--ad-line)', background: 'var(--ad-panel2)' }}
         >
           <span className="w-16">Status</span>
@@ -43,7 +43,7 @@ export default function Feed({ feed, refresh }) {
           {feed.map((r) => (
             <div
               key={r.id}
-              className="px-5 py-3.5 flex items-center gap-4 transition-colors hover:bg-white/[0.015]"
+              className="px-5 py-3.5 flex items-center gap-4 transition-colors hover:bg-white/[0.015] min-w-[660px]"
               style={{ borderColor: 'var(--ad-line)' }}
             >
               <div className="w-16 flex items-center gap-2">
@@ -93,7 +93,7 @@ export default function Feed({ feed, refresh }) {
         )}
       </div>
 
-      <div className="mt-4 flex items-center gap-3 font-mono text-[10px] tracking-wider" style={{ color: 'var(--ad-muted)' }}>
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] tracking-wider" style={{ color: 'var(--ad-muted)' }}>
         <IconTerminal size={12} />
         EACH SETTLED PAYMENT EMITS SPENDRECORDED ON-CHAIN VIA POLICYENGINE · AMOUNTS IN USDC (6 DECIMALS)
       </div>

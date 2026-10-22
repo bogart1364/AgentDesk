@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Sidebar from './components/Sidebar.jsx';
+import Sidebar, { NAV } from './components/Sidebar.jsx';
 import ConnectPanel from './components/ConnectPanel.jsx';
 import Landing from './pages/Landing.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -8,7 +8,7 @@ import AgentDetail from './pages/AgentDetail.jsx';
 import CreateAgent from './pages/CreateAgent.jsx';
 import Feed from './pages/Feed.jsx';
 import { useAuth, authFetch } from './auth.jsx';
-import { IconCheck, IconAlert } from './components/Icons.jsx';
+import { IconCheck, IconAlert, IconLogoMark } from './components/Icons.jsx';
 import { CHAIN_MODE, PRIVY_ENABLED } from './wagmi.js';
 
 export default function App() {
@@ -28,17 +28,17 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     if (!authed || !address) return;
+    // health is independent and fast: paint the mode banner before the (slower) feed scan
+    authFetch('/health').then(setHealth).catch(() => {});
     try {
-      const [meData, agentsData, feedData, h] = await Promise.all([
+      const [meData, agentsData, feedData] = await Promise.all([
         authFetch(`/me?address=${address}`),
         authFetch(`/agents?address=${address}`),
         authFetch('/feed?limit=40'),
-        authFetch('/health'),
       ]);
       setMe(meData);
       setAgents(Array.isArray(agentsData) ? agentsData : agentsData.agents || []);
       setFeed(feedData);
-      setHealth(h);
       setApiError(null);
     } catch (e) {
       console.error(e);
@@ -122,7 +122,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--ad-ink)' }}>
+    <div className="min-h-screen flex flex-col lg:block" style={{ background: 'var(--ad-ink)' }}>
       <Sidebar
         page={page}
         setPage={setPage}
@@ -133,13 +133,15 @@ export default function App() {
         auth={auth}
       />
 
-      <div className="flex-1 ml-64 flex flex-col min-h-screen">
-        <main className="flex-1 p-8 overflow-y-auto bp-grid">
+      <MobileNav page={page} setPage={setPage} onHome={() => setPage('landing')} auth={auth} health={health} />
+
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto bp-grid">
           <div className="max-w-6xl mx-auto">
             {/* mode banner: chain vs local */}
             {health && (
               <div
-                className="flex items-center gap-3 px-4 py-2.5 rounded mb-6 font-mono text-[10px] tracking-wider"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 rounded mb-6 font-mono text-[10px] tracking-wider break-words"
                 style={
                   health.mode === 'chain'
                     ? { background: 'rgba(52,211,153,0.05)', border: '1px solid rgba(52,211,153,0.25)', color: '#34d399' }
@@ -197,11 +199,68 @@ export default function App() {
   );
 }
 
+function MobileNav({ page, setPage, onHome, auth, health }) {
+  return (
+    <div
+      className="lg:hidden sticky top-0 z-40 border-b"
+      style={{ background: 'rgba(13,15,22,0.95)', borderColor: 'var(--ad-line)', backdropFilter: 'blur(12px)' }}
+    >
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <button onClick={onHome} className="flex items-center gap-2.5 min-w-0">
+          <IconLogoMark size={26} />
+          <div className="min-w-0 text-left">
+            <div className="font-bold text-white text-sm leading-none">AgentDesk</div>
+            <div className="font-mono text-[8px] tracking-[0.18em] mt-1" style={{ color: 'var(--ad-muted)' }}>
+              CONTROL PLANE
+            </div>
+          </div>
+        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="flex items-center gap-1.5 font-mono text-[9px] tracking-wider" style={{ color: 'var(--ad-muted)' }}>
+            <span className="dot" style={{ background: !health ? '#6b7390' : health.ok ? '#34d399' : '#f87171' }} />
+            {!health ? 'SYNC' : health.ok ? String(health.mode || 'local').toUpperCase() : 'OFFLINE'}
+          </span>
+          {auth && (
+            <button
+              onClick={auth.logout}
+              className="font-mono text-[9px] tracking-wider hover:text-white transition-colors"
+              style={{ color: 'var(--ad-muted)' }}
+            >
+              SIGN OUT
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {NAV.map((n) => {
+          const Icon = n.icon;
+          const active = page === n.id || (page === 'agent-detail' && n.id === 'agents');
+          return (
+            <button
+              key={n.id}
+              onClick={() => setPage(n.id)}
+              className="shrink-0 inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded text-[10px] sm:text-[11px] font-medium transition-colors"
+              style={
+                active
+                  ? { background: 'rgba(11,19,250,0.12)', color: '#fff', border: '1px solid rgba(11,19,250,0.35)' }
+                  : { color: 'var(--ad-muted)', border: '1px solid var(--ad-line)' }
+              }
+            >
+              <Icon size={13} style={active ? { color: 'var(--ad-blue-l)' } : undefined} />
+              {n.id === 'create' ? 'Create' : n.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Toast({ toast }) {
   const isError = toast.type === 'error';
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded animate-up"
+      className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded animate-up"
       style={{
         background: 'var(--ad-panel)',
         border: `1px solid ${isError ? 'rgba(239,68,68,0.4)' : 'rgba(11,19,250,0.45)'}`,

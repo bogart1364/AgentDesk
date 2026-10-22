@@ -312,6 +312,9 @@ body {
   letter-spacing: -0.02em;
   color: #fff;
 }
+@media (max-width: 420px) {
+  .stat-value { font-size: 20px; }
+}
 
 /* Progress track */
 .track {

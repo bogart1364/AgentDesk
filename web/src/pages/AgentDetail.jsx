@@ -223,8 +223,8 @@ export default function AgentDetail({ agentId, onBack, refresh, showToast }) {
       </button>
 
       {/* header */}
-      <div className="panel p-6 mb-6">
-        <div className="flex items-center gap-5">
+      <div className="panel p-4 sm:p-6 mb-6">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-5">
           <div
             className="w-14 h-14 flex items-center justify-center rounded font-bold text-xl"
             style={{
@@ -254,7 +254,7 @@ export default function AgentDetail({ agentId, onBack, refresh, showToast }) {
         </div>
 
         {p && (
-          <div className="mt-6 grid grid-cols-4 gap-3">
+          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
             <UsageBox label="SPENT TODAY" value={fmtUsd(p.spentToday)} max={p.daily_budget > 0 ? fmtUsd(p.daily_budget) : '∞'} pct={p.daily_budget > 0 ? (p.spentToday / p.daily_budget) * 100 : 0} />
             <UsageBox label="SPENT MONTH" value={fmtUsd(p.spentThisMonth)} max={p.monthly_budget > 0 ? fmtUsd(p.monthly_budget) : '∞'} pct={p.monthly_budget > 0 ? (p.spentThisMonth / p.monthly_budget) * 100 : 0} />
             <MiniStat label="PER-TX CAP" value={fmtUsd(p.per_tx_cap)} />
@@ -264,12 +264,12 @@ export default function AgentDetail({ agentId, onBack, refresh, showToast }) {
       </div>
 
       {/* tabs */}
-      <div className="flex gap-1 mb-6">
+      <div className="flex gap-1 mb-6 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`tab ${tab === t.id ? 'tab-active' : ''}`}
+            className={`tab shrink-0 whitespace-nowrap ${tab === t.id ? 'tab-active' : ''}`}
           >
             {t.label}
           </button>

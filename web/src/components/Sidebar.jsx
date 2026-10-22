@@ -3,7 +3,7 @@ import { IconLogoMark, IconGrid, IconAgent, IconPlus, IconPulse, IconShield, Ico
 import { short } from '../lib/format.js';
 import { PRIVY_ENABLED } from '../wagmi.js';
 
-const NAV = [
+export const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: IconGrid, tag: '01' },
   { id: 'agents', label: 'Agents', icon: IconAgent, tag: '02' },
   { id: 'create', label: 'Create Agent', icon: IconPlus, tag: '03' },
@@ -13,7 +13,7 @@ const NAV = [
 export default function Sidebar({ page, setPage, me, agents, openAgent, health, auth }) {
   return (
     <aside
-      className="fixed left-0 top-0 bottom-0 w-64 flex flex-col z-40 border-r"
+      className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 flex-col z-40 border-r"
       style={{ background: 'var(--ad-panel)', borderColor: 'var(--ad-line)' }}
     >
       {/* brand */}

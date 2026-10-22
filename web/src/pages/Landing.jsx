@@ -57,26 +57,26 @@ export default function Landing({ auth, onStart }) {
       <div
         className="absolute pointer-events-none"
         style={{
-          top: '-15%', left: '25%', width: 700, height: 700,
+          top: '-15%', left: '10%', width: 'min(700px, 140vw)', height: 'min(700px, 140vw)',
           background: 'radial-gradient(circle, rgba(11,19,250,0.16) 0%, transparent 65%)',
         }}
       />
 
       {/* nav */}
       <nav
-        className="relative z-10 flex items-center justify-between px-10 py-5 border-b"
+        className="relative z-10 flex items-center justify-between gap-3 px-4 sm:px-8 lg:px-10 py-4 sm:py-5 border-b"
         style={{ borderColor: 'var(--ad-line)', background: 'rgba(7,8,13,0.7)', backdropFilter: 'blur(12px)' }}
       >
-        <div className="flex items-center gap-3">
-          <IconLogoMark size={32} />
-          <div>
+        <div className="flex items-center gap-3 min-w-0">
+          <IconLogoMark size={30} />
+          <div className="min-w-0">
             <div className="font-bold text-white text-sm leading-tight">AgentDesk</div>
             <div className="font-mono text-[9px] tracking-[0.2em]" style={{ color: 'var(--ad-muted)' }}>
               ON BASE
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <a
             href="https://docs.base.org"
             target="_blank"
@@ -85,45 +85,51 @@ export default function Landing({ auth, onStart }) {
           >
             Docs <IconExternal size={12} />
           </a>
-          <button onClick={go} className="btn-primary text-xs">
-            {auth?.authed ? 'Open Console' : PRIVY_ENABLED ? (<>Sign In <IconShield size={13} /></>) : (<>Connect &amp; Login <IconWallet size={13} /></>)}
+          <button onClick={go} className="btn-primary text-[11px] sm:text-xs px-3 sm:px-5 whitespace-nowrap">
+            {auth?.authed ? 'Open Console' : PRIVY_ENABLED ? (<>Sign In <IconShield size={13} /></>) : (
+              <>
+                <span className="sm:hidden">Connect</span>
+                <span className="hidden sm:inline">Connect &amp; Login</span>
+                <IconWallet size={13} />
+              </>
+            )}
             {auth?.authed && <IconArrowRight size={14} />}
           </button>
         </div>
       </nav>
 
       {/* hero */}
-      <div className="relative z-10 max-w-5xl mx-auto px-10 pt-24 pb-20">
-        <div className="section-tag mb-6">Agent Commerce Control Plane</div>
+      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-8 lg:px-10 pt-14 sm:pt-20 lg:pt-24 pb-14 sm:pb-20">
+        <div className="section-tag mb-5 sm:mb-6">Agent Commerce Control Plane</div>
 
-        <h1 className="text-5xl md:text-6xl font-extrabold text-white leading-[1.08] tracking-tight max-w-3xl">
+        <h1 className="text-[2rem] leading-[1.12] sm:text-5xl lg:text-6xl sm:leading-[1.08] font-extrabold text-white tracking-tight max-w-3xl break-words">
           Spend policies for
-          <br />
+          <br className="hidden sm:block" />{' '}
           <span style={{ color: 'var(--ad-blue-l)' }}>autonomous agents</span>
         </h1>
 
-        <p className="mt-8 text-base leading-relaxed max-w-xl" style={{ color: 'var(--ad-muted)' }}>
+        <p className="mt-6 sm:mt-8 text-sm sm:text-base leading-relaxed max-w-xl" style={{ color: 'var(--ad-muted)' }}>
           Agents can already pay for APIs via <span className="text-white font-medium">x402</span>.
           What's missing is human control — budgets, caps, allowlists, kill-switches.
           AgentDesk makes agent spending <span className="text-white font-medium">on-chain, auditable, and revocable</span>.
         </p>
 
-        <div className="mt-10 flex items-center gap-4">
-          <button onClick={go} className="btn-primary text-sm px-8 py-3.5">
+        <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <button onClick={go} className="btn-primary text-sm px-6 sm:px-8 py-3 sm:py-3.5 w-full sm:w-auto">
             {auth?.authed ? 'Launch Console' : PRIVY_ENABLED ? 'Sign In' : 'Connect & Login'} <IconArrowRight size={16} />
           </button>
           <a
             href="https://docs.base.org/build-on-base/accept-payments/charge-for-an-api"
             target="_blank"
             rel="noreferrer"
-            className="btn-ghost text-sm px-8 py-3.5"
+            className="btn-ghost text-sm px-6 sm:px-8 py-3 sm:py-3.5 w-full sm:w-auto"
           >
             x402 Specification <IconExternal size={14} />
           </a>
         </div>
 
         {/* features */}
-        <div className="mt-24 grid md:grid-cols-3 gap-4">
+        <div className="mt-16 sm:mt-24 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {FEATURES.map((f) => {
             const Icon = f.icon;
             return (
@@ -149,13 +155,13 @@ export default function Landing({ auth, onStart }) {
         </div>
 
         {/* stack diagram */}
-        <div className="mt-16 panel p-8">
-          <div className="section-tag mb-6">System Architecture</div>
+        <div className="mt-10 sm:mt-16 panel p-4 sm:p-8">
+          <div className="section-tag mb-5 sm:mb-6">System Architecture</div>
           <div className="space-y-0">
             {STACK.map((s, i) => (
               <div key={s.layer} className="flex items-stretch">
                 {/* connector */}
-                <div className="w-12 flex flex-col items-center">
+                <div className="w-9 sm:w-12 flex flex-col items-center shrink-0">
                   <div
                     className="w-8 h-8 flex items-center justify-center font-mono text-[10px] font-bold rounded-sm"
                     style={{
@@ -172,17 +178,17 @@ export default function Landing({ auth, onStart }) {
                 </div>
                 {/* content */}
                 <div
-                  className="flex-1 flex items-center justify-between px-5 py-3.5 mb-1 rounded-sm"
+                  className="min-w-0 flex-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 sm:px-5 py-3 sm:py-3.5 mb-1 rounded-sm"
                   style={{ background: 'var(--ad-panel2)', border: '1px solid var(--ad-line)' }}
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-medium text-white">{s.name}</div>
-                    <div className="font-mono text-[10px] mt-0.5" style={{ color: 'var(--ad-muted)' }}>
+                    <div className="font-mono text-[10px] mt-0.5 break-words" style={{ color: 'var(--ad-muted)' }}>
                       {s.tech}
                     </div>
                   </div>
                   {i === 0 && (
-                    <span className="badge" style={{ color: '#34d399', borderColor: 'rgba(52,211,153,0.25)', background: 'rgba(52,211,153,0.06)' }}>
+                    <span className="badge shrink-0" style={{ color: '#34d399', borderColor: 'rgba(52,211,153,0.25)', background: 'rgba(52,211,153,0.06)' }}>
                       <span className="dot" style={{ background: '#34d399' }} /> LIVE
                     </span>
                   )}
@@ -193,17 +199,17 @@ export default function Landing({ auth, onStart }) {
         </div>
 
         {/* grant strip */}
-        <div className="mt-12 flex flex-wrap items-center justify-between gap-6 panel-plain px-8 py-6">
-          <div className="flex items-center gap-4">
-            <IconLayers size={20} style={{ color: 'var(--ad-blue-l)' }} />
-            <div>
+        <div className="mt-8 sm:mt-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6 panel-plain px-5 sm:px-8 py-5 sm:py-6">
+          <div className="flex items-start sm:items-center gap-4 min-w-0">
+            <IconLayers size={20} style={{ color: 'var(--ad-blue-l)' }} className="shrink-0 mt-0.5 sm:mt-0" />
+            <div className="min-w-0">
               <div className="text-sm font-semibold text-white">Built for Base Grant Program</div>
               <div className="font-mono text-[10px] tracking-wider mt-0.5" style={{ color: 'var(--ad-muted)' }}>
                 CATEGORY: AGENTS — COMMERCE, X402
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-6 font-mono text-[10px] tracking-wider" style={{ color: 'var(--ad-muted)' }}>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[10px] tracking-wider" style={{ color: 'var(--ad-muted)' }}>
             <span className="flex items-center gap-1.5"><IconTerminal size={12} /> SOLIDITY 0.8.24</span>
             <span className="flex items-center gap-1.5"><IconLink size={12} /> X402 + VERIFY</span>
           </div>
@@ -219,7 +225,7 @@ export default function Landing({ auth, onStart }) {
         tag="Sign in"
         title="Connect your wallet"
       >
-        <div className="min-w-[340px]">
+        <div className="w-full">
           <ConnectPanel auth={auth} onStart={closeAndStart} bare />
         </div>
       </Modal>

@@ -79,7 +79,7 @@ export default function Dashboard({ me, agents, feed, openAgent, setPage }) {
       />
 
       {/* stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
         <StatCard tag="Active Agents" value={String(activeAgents)} sub={`${agents.length} TOTAL`} accent />
         <StatCard tag="Spend · 24H" value={fmtUsd(totalSpendToday)} sub="FROM FEED LOG" />
         <StatCard tag="Identity" value={verified ? 'Verified' : 'Unverified'} sub={me?.human?.verify_provider?.toUpperCase() || '—'} />
@@ -89,7 +89,7 @@ export default function Dashboard({ me, agents, feed, openAgent, setPage }) {
       {/* verify banner */}
       {!verified && me && (
         <div
-          className="flex items-center gap-5 px-6 py-5 rounded mb-8"
+          className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5 px-4 sm:px-6 py-4 sm:py-5 rounded mb-8"
           style={{ background: 'rgba(251,191,36,0.04)', border: '1px solid rgba(251,191,36,0.2)' }}
         >
           <div
@@ -109,22 +109,24 @@ export default function Dashboard({ me, agents, feed, openAgent, setPage }) {
               </div>
             )}
           </div>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="input text-xs"
-            style={{ width: 116 }}
-            disabled={busy}
-          >
-            {VERIFY_PROVIDERS.map((p) => (
-              <option key={p} value={p}>
-                {p.toUpperCase()}
-              </option>
-            ))}
-          </select>
-          <button onClick={runVerify} className="btn-ghost text-xs" disabled={busy}>
-            {busy ? 'Signing…' : `Verify via ${provider.toUpperCase()}`}
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              className="input text-xs flex-1 sm:flex-none"
+              style={{ width: 116 }}
+              disabled={busy}
+            >
+              {VERIFY_PROVIDERS.map((p) => (
+                <option key={p} value={p}>
+                  {p.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <button onClick={runVerify} className="btn-ghost text-xs flex-1 sm:flex-none whitespace-nowrap" disabled={busy}>
+              {busy ? 'Signing…' : `Verify via ${provider.toUpperCase()}`}
+            </button>
+          </div>
         </div>
       )}
 
