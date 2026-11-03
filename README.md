@@ -186,6 +186,12 @@ verification list.
 | Consumer apps (tx growth) | Every agent payment is a transaction |
 | DeFi 2.0 (payments rail) | USDC settlement on Base |
 
+## Motion titles
+
+13.6s 1080p title sequence (brand, headline, feature cards, dashboard, deployed
+contract addresses) with a low-volume synthesized soundtrack:
+[docs/agentdesk-motion.mp4](docs/agentdesk-motion.mp4)
+
 ## License
 
 MIT
