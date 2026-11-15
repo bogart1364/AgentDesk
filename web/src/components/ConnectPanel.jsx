@@ -1,8 +1,40 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useConnect, useSwitchChain } from 'wagmi';
 import { IconWallet, IconShield, IconArrowRight, IconLogoMark } from './Icons.jsx';
 import { Spinner } from './ui.jsx';
 import { CHAIN_NAME, CHAIN_ID, PRIVY_ENABLED } from '../wagmi.js';
+
+/** Raw wagmi/SDK errors are unfriendly on mobile — translate the common ones. */
+function friendly(msg) {
+  if (!msg) return '';
+  if (/provider not found|no provider/i.test(msg)) {
+    return 'No wallet found in this browser. Use Coinbase Wallet below, or install MetaMask / Rabby and reload.';
+  }
+  if (/blocked|popup|window (was )?(closed|blocked)/i.test(msg)) {
+    return 'The wallet window was blocked. Allow popups for this site (iPhone: Settings → Safari → Block Pop-ups → off), then tap Sign In again.';
+  }
+  if (/user rejected|denied the request|request rejected/i.test(msg)) {
+    return 'You rejected the request in the wallet. Tap Sign In to try again.';
+  }
+  return msg;
+}
+
+/** True when the browser exposes an injected wallet (window.ethereum or EIP-6963). */
+function useInjectedWallet() {
+  const [has, setHas] = useState(() => typeof window !== 'undefined' && !!window.ethereum);
+  useEffect(() => {
+    const update = () => setHas(!!window.ethereum);
+    window.addEventListener('ethereum#initialized', update);
+    window.addEventListener('eip6963:announceProvider', update);
+    window.addEventListener('load', update);
+    return () => {
+      window.removeEventListener('ethereum#initialized', update);
+      window.removeEventListener('eip6963:announceProvider', update);
+      window.removeEventListener('load', update);
+    };
+  }, []);
+  return has;
+}
 
 /**
  * Sign-in panel.
@@ -32,16 +64,23 @@ export default function ConnectPanel({ auth, onStart, bare }) {
   const injected =
     connectors.find((c) => c.id === 'injected') ||
     connectors.find((c) => c.id !== 'coinbaseWalletSDK');
+  const hasInjected = useInjectedWallet();
+  const coinbasePending = connecting && pendingConnector.current === 'coinbaseWalletSDK';
 
   const handleConnect = (connector) => {
     if (!connector || connecting) return;
-    wantLogin.current = true;
+    // Coinbase Wallet signs through a keys.coinbase.com popup, and browsers block
+    // popups that are not opened from a user click (Coinbase CDP "Popup Tips").
+    // So only the injected path auto-signs; the Coinbase path waits for an explicit
+    // tap on Sign In — otherwise the signature popup never opens on mobile.
+    wantLogin.current = connector.id !== 'coinbaseWalletSDK';
     pendingConnector.current = connector.id;
     connect({ connector });
   };
 
   const busyId = connecting ? pendingConnector.current : null;
-  const allErrors = [error, connectError?.message].filter(Boolean).join(' — ');
+  const rawErrors = [error?.message, connectError?.message].filter(Boolean);
+  const shownErrors = [...new Set(rawErrors.map(friendly).filter(Boolean))];
 
   return (
     <div className={bare ? 'w-full' : 'panel p-6 max-w-md w-full'}>
@@ -68,7 +107,7 @@ export default function ConnectPanel({ auth, onStart, bare }) {
           )}
 
           {/* Fallback: injected browser wallet */}
-          {injected && (
+          {injected && hasInjected && (
             <button
               onClick={() => handleConnect(injected)}
               disabled={connecting}
@@ -78,6 +117,19 @@ export default function ConnectPanel({ auth, onStart, bare }) {
               {busyId === 'injected' ? <Spinner size={14} /> : null}
               Browser Wallet
             </button>
+          )}
+
+          {!hasInjected && (
+            <p className="text-[11px] leading-relaxed text-center" style={{ color: 'var(--ad-muted)' }}>
+              No wallet extension detected in this browser — use Coinbase Wallet, or install
+              MetaMask / Rabby and reload.
+            </p>
+          )}
+
+          {coinbasePending && (
+            <p className="font-mono text-[10px] tracking-wider text-center" style={{ color: 'var(--ad-blue-l)' }}>
+              OPENING COINBASE WALLET — APPROVE IN THE POPUP OR NEW TAB
+            </p>
           )}
 
           <p className="font-mono text-[9px] tracking-wider text-center" style={{ color: 'var(--ad-line2)' }}>
@@ -100,6 +152,17 @@ export default function ConnectPanel({ auth, onStart, bare }) {
           <p className="text-xs leading-relaxed" style={{ color: 'var(--ad-muted)' }}>
             Sign a message to verify ownership. No transaction, no gas.
           </p>
+          {status === 'signing' ? (
+            <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ad-blue-l)' }}>
+              Approve in the wallet window — a Coinbase Wallet popup or tab may have opened.
+              Keep this page open while you sign.
+            </p>
+          ) : (
+            <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ad-muted)' }}>
+              Tap Sign In — a wallet window opens for the signature (that tap is required,
+              browsers only allow the wallet popup from a real click).
+            </p>
+          )}
           <button onClick={() => login().catch(() => {})} className="btn-primary w-full" disabled={status === 'signing'}>
             {status === 'signing' ? <><Spinner size={14} /> Waiting for signature…</> : <><IconShield size={15} /> Sign In</>}
           </button>
@@ -124,9 +187,13 @@ export default function ConnectPanel({ auth, onStart, bare }) {
         </div>
       )}
 
-      {allErrors && (
-        <div className="mt-4 text-[11px] leading-relaxed" style={{ color: '#f87171' }}>
-          {allErrors}
+      {shownErrors.length > 0 && (
+        <div className="mt-4 space-y-1.5">
+          {shownErrors.map((m) => (
+            <div key={m} className="text-[11px] leading-relaxed" style={{ color: '#f87171' }}>
+              {m}
+            </div>
+          ))}
         </div>
       )}
     </div>

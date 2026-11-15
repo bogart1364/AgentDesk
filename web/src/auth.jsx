@@ -15,6 +15,20 @@ const ADDR_KEY = 'agentdesk_address';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+/** Rejects with a readable message instead of hanging forever (mobile popups). */
+function withTimeout(promise, ms, message) {
+  let id;
+  const timer = new Promise((_, reject) => {
+    id = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timer]).finally(() => clearTimeout(id));
+}
+
+const API_TIMEOUT_MSG =
+  'Could not reach the AgentDesk API — check your connection and try again.';
+const SIGN_TIMEOUT_MSG =
+  'The wallet did not respond. A wallet window may have been blocked: allow popups for this site (iPhone: Settings → Safari → Block Pop-ups → off), then tap Sign In again.';
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -74,20 +88,28 @@ function useSiweAuth() {
     setError(null);
     try {
       // 1. nonce + message
-      const r = await fetch(`${API_BASE}/auth/nonce?address=${address}`);
+      const r = await withTimeout(
+        fetch(`${API_BASE}/auth/nonce?address=${address}`),
+        20000,
+        API_TIMEOUT_MSG
+      );
       if (!r.ok) throw new Error('Failed to get sign-in message');
       const { message } = await r.json();
 
-      // 2. wallet signature
-      const signature = await signMessageAsync({ message });
+      // 2. wallet signature (Coinbase Wallet opens a popup — must not hang)
+      const signature = await withTimeout(signMessageAsync({ message }), 60000, SIGN_TIMEOUT_MSG);
 
       // 3. verify → JWT
-      const v = await fetch(`${API_BASE}/auth/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, message, signature }),
-      });
-      const data = await v.json();
+      const v = await withTimeout(
+        fetch(`${API_BASE}/auth/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, message, signature }),
+        }),
+        20000,
+        API_TIMEOUT_MSG
+      );
+      const data = await v.json().catch(() => ({}));
       if (!v.ok) throw new Error(data.error || 'Verification failed');
 
       setToken(data.token);
