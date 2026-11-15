@@ -29,6 +29,69 @@ const API_TIMEOUT_MSG =
 const SIGN_TIMEOUT_MSG =
   'The wallet did not respond. A wallet window may have been blocked: allow popups for this site (iPhone: Settings → Safari → Block Pop-ups → off), then tap Sign In again.';
 
+/**
+ * SIWE message cache.
+ *
+ * Mobile browsers only allow window.open() inside the transient user-gesture
+ * window, and that window is gone after an await. Coinbase Wallet signs in a
+ * keys.coinbase.com popup, so the popup must be opened synchronously from the
+ * Sign In tap — never after awaiting a nonce fetch. We therefore warm the
+ * message right after connect and sign from cache on tap.
+ */
+const nonceCache = new Map(); // lowercase address -> { message, at }
+const NONCE_FRESH_MS = 4 * 60 * 1000; // server keeps messages valid for 5 min
+const NONCE_STORE_KEY = 'agentdesk_nonce';
+
+// Survive a wallet-driven redirect/reload (the message must still be warm when
+// the page comes back, otherwise the popup would again open after an await).
+try {
+  const raw = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(NONCE_STORE_KEY);
+  if (raw) for (const [k, v] of Object.entries(JSON.parse(raw))) if (v?.message) nonceCache.set(k, v);
+} catch {
+  /* storage unavailable — cache simply stays in memory */
+}
+
+function saveNonceStore() {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(NONCE_STORE_KEY, JSON.stringify(Object.fromEntries(nonceCache)));
+    }
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function cachedMessage(address) {
+  const key = String(address || '').toLowerCase();
+  const hit = nonceCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > NONCE_FRESH_MS) {
+    nonceCache.delete(key);
+    saveNonceStore();
+    return null;
+  }
+  return hit.message;
+}
+
+async function fetchNonceMessage(address) {
+  const r = await withTimeout(
+    fetch(`${API_BASE}/auth/nonce?address=${address}`),
+    20000,
+    API_TIMEOUT_MSG
+  );
+  if (!r.ok) throw new Error('Failed to get sign-in message');
+  const { message } = await r.json();
+  nonceCache.set(String(address).toLowerCase(), { message, at: Date.now() });
+  saveNonceStore();
+  return message;
+}
+
+/** Warm the sign-in message ahead of the tap (no-op when already fresh). */
+export function prefetchNonce(address) {
+  if (!address || cachedMessage(address)) return Promise.resolve();
+  return fetchNonceMessage(address).catch(() => {});
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -87,14 +150,9 @@ function useSiweAuth() {
     setStatus('signing');
     setError(null);
     try {
-      // 1. nonce + message
-      const r = await withTimeout(
-        fetch(`${API_BASE}/auth/nonce?address=${address}`),
-        20000,
-        API_TIMEOUT_MSG
-      );
-      if (!r.ok) throw new Error('Failed to get sign-in message');
-      const { message } = await r.json();
+      // 1. sign-in message — from cache when warm so step 2 can run inside the
+      //    tap gesture (a nonce fetch here would let the wallet popup get blocked)
+      const message = cachedMessage(address) || (await fetchNonceMessage(address));
 
       // 2. wallet signature (Coinbase Wallet opens a popup — must not hang)
       const signature = await withTimeout(signMessageAsync({ message }), 60000, SIGN_TIMEOUT_MSG);
@@ -117,6 +175,8 @@ function useSiweAuth() {
       setTokenState(data.token);
       setAuthAddress(data.address);
       setStatus('authed');
+      nonceCache.delete(String(address).toLowerCase()); // message is single-use
+      saveNonceStore();
       return data;
     } catch (e) {
       setStatus('error');

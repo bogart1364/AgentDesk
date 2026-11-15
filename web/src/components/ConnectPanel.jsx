@@ -3,6 +3,7 @@ import { useConnect, useSwitchChain } from 'wagmi';
 import { IconWallet, IconShield, IconArrowRight, IconLogoMark } from './Icons.jsx';
 import { Spinner } from './ui.jsx';
 import { CHAIN_NAME, CHAIN_ID, PRIVY_ENABLED } from '../wagmi.js';
+import { prefetchNonce } from '../auth.jsx';
 
 /** Raw wagmi/SDK errors are unfriendly on mobile — translate the common ones. */
 function friendly(msg) {
@@ -49,6 +50,18 @@ export default function ConnectPanel({ auth, onStart, bare }) {
   const { switchChain, isPending: switching } = useSwitchChain();
   const wantLogin = useRef(false);
   const pendingConnector = useRef(null);
+  const [stalled, setStalled] = useState(false);
+
+  // A wallet popup that never reports back (blocked / closed on mobile) would
+  // otherwise spin forever — say what to do after 45s.
+  useEffect(() => {
+    if (!connecting) {
+      setStalled(false);
+      return;
+    }
+    const id = setTimeout(() => setStalled(true), 45000);
+    return () => clearTimeout(id);
+  }, [connecting]);
 
   const wrongChain = isConnected && chain && chain.id !== CHAIN_ID;
 
@@ -81,6 +94,16 @@ export default function ConnectPanel({ auth, onStart, bare }) {
   const busyId = connecting ? pendingConnector.current : null;
   const rawErrors = [error?.message, connectError?.message].filter(Boolean);
   const shownErrors = [...new Set(rawErrors.map(friendly).filter(Boolean))];
+
+  // Warm the SIWE message while the Sign In screen is up: on mobile the wallet
+  // popup may only be opened synchronously from the tap itself, so by Sign In
+  // time the message must already be in cache.
+  useEffect(() => {
+    if (!isConnected || authed || !address) return;
+    prefetchNonce(address);
+    const id = setInterval(() => prefetchNonce(address), 90 * 1000);
+    return () => clearInterval(id);
+  }, [isConnected, authed, address]);
 
   return (
     <div className={bare ? 'w-full' : 'panel p-6 max-w-md w-full'}>
@@ -129,6 +152,14 @@ export default function ConnectPanel({ auth, onStart, bare }) {
           {coinbasePending && (
             <p className="font-mono text-[10px] tracking-wider text-center" style={{ color: 'var(--ad-blue-l)' }}>
               OPENING COINBASE WALLET — APPROVE IN THE POPUP OR NEW TAB
+            </p>
+          )}
+
+          {connecting && stalled && (
+            <p className="text-[11px] leading-relaxed text-center" style={{ color: '#fbbf24' }}>
+              Still waiting for the wallet. Open the wallet window/tab it raised and approve there,
+              then return to this page. If no window opened at all, allow popups for this site and
+              tap the button again.
             </p>
           )}
 
